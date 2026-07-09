@@ -1,0 +1,1 @@
+- [Express sub-router mount-order footgun](express-subrouter-auth-ordering.md) — a bare `router.use(requireAuth)` inside one sub-router mounted at "/" blocks ALL other sub-routers mounted after it, including unrelated public ones.

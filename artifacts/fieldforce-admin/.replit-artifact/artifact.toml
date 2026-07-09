@@ -1,0 +1,27 @@
+kind = "web"
+previewPath = "/"
+title = "FieldForce Live Admin"
+version = "1.0.0"
+id = "artifacts/fieldforce-admin"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 21944
+
+[services.development]
+run = "pnpm --filter @workspace/fieldforce-admin run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/fieldforce-admin", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/fieldforce-admin/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "21944"
+BASE_PATH = "/"

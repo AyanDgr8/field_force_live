@@ -3,13 +3,35 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: FieldForce Live — Admin Panel API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: auth
+    description: Admin authentication
+  - name: users
+    description: Field employees and admins
+  - name: places
+    description: Marked places per user
+  - name: live
+    description: Live map + dashboard
+  - name: history
+    description: Sessions, pings, dwell, calendar
+  - name: dayplan
+    description: Visit stops and day plans
+  - name: public
+    description: Public customer tracking
+  - name: alerts
+    description: Emergency alerts
+  - name: ingest
+    description: Mobile app ingestion endpoints
+  - name: onboarding
+    description: Onboarding invites and consent
+  - name: simulator
+    description: Demo location simulator
 paths:
   /healthz:
     get:
@@ -24,6 +46,752 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  # ---------- Auth ----------
+  /auth/login:
+    post:
+      operationId: login
+      tags: [auth]
+      summary: Admin login step 1 (password) — sends email OTP
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginInput"
+      responses:
+        "200":
+          description: OTP sent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginChallenge"
+        "401":
+          description: Invalid credentials
+  /auth/verify-otp:
+    post:
+      operationId: verifyOtp
+      tags: [auth]
+      summary: Admin login step 2 (OTP) — issues JWT session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VerifyOtpInput"
+      responses:
+        "200":
+          description: Authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthSession"
+        "401":
+          description: Invalid or expired OTP
+  /auth/me:
+    get:
+      operationId: getMe
+      tags: [auth]
+      summary: Current authenticated admin
+      responses:
+        "200":
+          description: Current admin
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminProfile"
+        "401":
+          description: Not authenticated
+  /auth/logout:
+    post:
+      operationId: logout
+      tags: [auth]
+      summary: End the admin session
+      responses:
+        "204":
+          description: Logged out
+
+  # ---------- Users ----------
+  /users:
+    get:
+      operationId: listUsers
+      tags: [users]
+      summary: List all users for the admin's customer
+      parameters:
+        - name: role
+          in: query
+          schema:
+            $ref: "#/components/schemas/UserRole"
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/UserStatus"
+      responses:
+        "200":
+          description: Users
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/User"
+    post:
+      operationId: createUser
+      tags: [users]
+      summary: Create a user or admin (geocodes addresses, generates onboarding invite for USER role)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserCreationResult"
+  /users/{id}:
+    get:
+      operationId: getUser
+      tags: [users]
+      summary: Get a user's profile + addresses + marked places
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: User detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserDetail"
+        "404":
+          description: Not found
+    patch:
+      operationId: updateUser
+      tags: [users]
+      summary: Update a user's profile fields
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserUpdate"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+        "404":
+          description: Not found
+  /users/{id}/onboarding-invite:
+    get:
+      operationId: getOnboardingInvite
+      tags: [onboarding]
+      summary: Fetch (or lazily create) the onboarding invite + shareable link for a user
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Invite
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingInvite"
+  /users/{id}/emergency-alert:
+    post:
+      operationId: triggerEmergencyAlert
+      tags: [alerts]
+      summary: Trigger an emergency "call back now" alert for a user
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmergencyAlertInput"
+      responses:
+        "201":
+          description: Alert triggered
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmergencyAlert"
+  /users/{id}/alerts:
+    get:
+      operationId: listUserAlerts
+      tags: [alerts]
+      summary: List emergency alerts for a user
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Alerts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/EmergencyAlert"
+
+  # ---------- Marked places ----------
+  /users/{id}/marked-places:
+    get:
+      operationId: listMarkedPlaces
+      tags: [places]
+      summary: List a user's marked places (up to 5)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Marked places
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MarkedPlace"
+    post:
+      operationId: createMarkedPlace
+      tags: [places]
+      summary: Add a marked place for a user
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MarkedPlaceInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MarkedPlace"
+  /marked-places/{placeId}:
+    delete:
+      operationId: deleteMarkedPlace
+      tags: [places]
+      summary: Remove a marked place
+      parameters:
+        - name: placeId
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "204":
+          description: Deleted
+
+  # ---------- Live map + dashboard ----------
+  /live/summary:
+    get:
+      operationId: getLiveSummary
+      tags: [live]
+      summary: Live fleet counts (active/stationary/offline/alerts)
+      responses:
+        "200":
+          description: Summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LiveSummary"
+  /live/positions:
+    get:
+      operationId: getLivePositions
+      tags: [live]
+      summary: Latest known position + status for every active user (poll every 5s)
+      responses:
+        "200":
+          description: Positions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/LivePosition"
+  /users/{id}/speed-history:
+    get:
+      operationId: getUserSpeedHistory
+      tags: [history]
+      summary: Speed sparkline for a user over the last hour
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Speed samples
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SpeedSample"
+  /users/{id}/proximity:
+    get:
+      operationId: getUserProximity
+      tags: [live]
+      summary: Live distance + travel time from the user's current position to each marked place, sorted nearest-first
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Proximity list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ProximityResult"
+  /users/{id}/current-stop:
+    get:
+      operationId: getUserCurrentStop
+      tags: [dayplan]
+      summary: The user's current/next visit stop with route, distance, ETA, and dwell status
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Current stop status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CurrentStopStatus"
+        "404":
+          description: No stop assigned
+
+  # ---------- Sessions (login/logout) ----------
+  /sessions:
+    get:
+      operationId: listUserSessions
+      tags: [history]
+      summary: Login/logout session history for a user, filterable by date range
+      parameters:
+        - name: userId
+          in: query
+          required: true
+          schema: { type: integer }
+        - name: from
+          in: query
+          schema: { type: string, format: date }
+        - name: to
+          in: query
+          schema: { type: string, format: date }
+      responses:
+        "200":
+          description: Sessions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/SessionRecord"
+
+  # ---------- Movement history / breadcrumb ----------
+  /breadcrumb:
+    get:
+      operationId: getUserBreadcrumb
+      tags: [history]
+      summary: Location pings for a single day (for map polyline replay)
+      parameters:
+        - name: userId
+          in: query
+          required: true
+          schema: { type: integer }
+        - name: date
+          in: query
+          required: true
+          schema: { type: string, format: date }
+      responses:
+        "200":
+          description: Pings for the day
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/LocationPing"
+  /users/{id}/places-calendar:
+    get:
+      operationId: getUserPlacesCalendar
+      tags: [history]
+      summary: 30-day calendar of distinct places visited (derived dwell segments) with total dwell time per place per day
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Calendar days
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PlacesCalendarDay"
+  /dwell-segments:
+    get:
+      operationId: getUserDwellSegments
+      tags: [history]
+      summary: Dwell segments for a specific day
+      parameters:
+        - name: userId
+          in: query
+          required: true
+          schema: { type: integer }
+        - name: date
+          in: query
+          required: true
+          schema: { type: string, format: date }
+      responses:
+        "200":
+          description: Dwell segments
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/DwellSegment"
+
+  # ---------- Day plans / visit stops ----------
+  /day-plan:
+    get:
+      operationId: getUserDayPlan
+      tags: [dayplan]
+      summary: Get (or create draft for) a user's day plan and ordered visit stops for a date
+      parameters:
+        - name: userId
+          in: query
+          required: true
+          schema: { type: integer }
+        - name: date
+          in: query
+          required: true
+          schema: { type: string, format: date }
+      responses:
+        "200":
+          description: Day plan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DayPlanDetail"
+  /users/{id}/visit-stops:
+    post:
+      operationId: createVisitStop
+      tags: [dayplan]
+      summary: Add a visit stop to a user's day plan (resolves address/pin/lat-lng to coordinates)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VisitStopInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VisitStop"
+  /visit-stops/{stopId}:
+    patch:
+      operationId: updateVisitStop
+      tags: [dayplan]
+      summary: Update a visit stop's priority, label, customer code, or status
+      parameters:
+        - name: stopId
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VisitStopUpdate"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VisitStop"
+        "404":
+          description: Not found
+    delete:
+      operationId: deleteVisitStop
+      tags: [dayplan]
+      summary: Remove a visit stop from a day plan
+      parameters:
+        - name: stopId
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "204":
+          description: Deleted
+  /day-plans/{dayPlanId}/plan-route:
+    post:
+      operationId: planRoute
+      tags: [dayplan]
+      summary: >
+        Compute priority-driven route order (P1 -> P2 -> P3 bands, shortest-path
+        optimized within each band) and persist sequence + totals
+      parameters:
+        - name: dayPlanId
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Planned day plan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DayPlanDetail"
+  /day-plans/{dayPlanId}/publish:
+    post:
+      operationId: publishDayPlan
+      tags: [dayplan]
+      summary: Publish (push) the finalized route to the user's device
+      parameters:
+        - name: dayPlanId
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Published day plan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DayPlanDetail"
+  /visit-stops/{stopId}/track-link:
+    post:
+      operationId: createTrackLink
+      tags: [public]
+      summary: Create (or reuse) a public customer tracking link for a stop
+      parameters:
+        - name: stopId
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Track link
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicTrackLink"
+  /visit-stops/{stopId}/track-link/revoke:
+    post:
+      operationId: revokeTrackLink
+      tags: [public]
+      summary: Revoke the public tracking link for a stop
+      parameters:
+        - name: stopId
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "204":
+          description: Revoked
+
+  # ---------- Public customer tracking ----------
+  /public/track/{token}:
+    get:
+      operationId: getPublicTrack
+      tags: [public]
+      summary: Public, unauthenticated live tracking view for a customer (minimal fields only)
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Live tracking info
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PublicTrackView"
+        "404":
+          description: Link expired, revoked, or not found
+
+  # ---------- Onboarding (mobile-facing) ----------
+  /onboarding/{token}:
+    get:
+      operationId: getOnboardingByToken
+      tags: [onboarding]
+      summary: Resolve an onboarding token to its landing-page data
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Onboarding info
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingLanding"
+        "404":
+          description: Invalid token
+  /onboarding/{token}/consent:
+    post:
+      operationId: submitOnboardingConsent
+      tags: [onboarding]
+      summary: Record consent and activate the user
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Consent recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingLanding"
+
+  # ---------- Ingestion (mobile-facing) ----------
+  /ingest/location:
+    post:
+      operationId: ingestLocation
+      tags: [ingest]
+      summary: Ingest one or more location pings (batched for offline catch-up)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IngestLocationInput"
+      responses:
+        "201":
+          description: Ingested
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/LocationPing"
+  /ingest/session:
+    post:
+      operationId: ingestSession
+      tags: [ingest]
+      summary: Ingest a login/logout event
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IngestSessionInput"
+      responses:
+        "201":
+          description: Recorded
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionRecord"
+  /user/dayplan:
+    get:
+      operationId: getMobileDayPlan
+      tags: [ingest]
+      summary: Mobile app fetch of the published, priority-ordered day route for a device-authenticated user
+      parameters:
+        - name: userId
+          in: query
+          required: true
+          schema: { type: integer }
+        - name: date
+          in: query
+          required: true
+          schema: { type: string, format: date }
+      responses:
+        "200":
+          description: Published day plan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DayPlanDetail"
+        "404":
+          description: No published plan for that date
+
+  # ---------- Simulator ----------
+  /simulator/status:
+    get:
+      operationId: getSimulatorStatus
+      tags: [simulator]
+      summary: Whether the demo location simulator is running
+      responses:
+        "200":
+          description: Status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SimulatorStatus"
+  /simulator/toggle:
+    post:
+      operationId: toggleSimulator
+      tags: [simulator]
+      summary: Start or stop the demo location simulator
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SimulatorToggleInput"
+      responses:
+        "200":
+          description: Status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SimulatorStatus"
+
 components:
   schemas:
     HealthStatus:
@@ -33,4 +801,521 @@ components:
           type: string
       required:
         - status
+
+    UserRole:
+      type: string
+      enum: [ADMIN, USER]
+    UserStatus:
+      type: string
+      enum: [INVITED, ACTIVE, SUSPENDED]
+    Gender:
+      type: string
+      enum: [MALE, FEMALE, OTHER]
+    AddressType:
+      type: string
+      enum: [OFFICE, BASE_OFFICE, SITE_OFFICE, HOME]
+    VisitStopPriority:
+      type: string
+      enum: [P1, P2, P3]
+    VisitStopStatus:
+      type: string
+      enum: [PENDING, EN_ROUTE, REACHED, COMPLETED, SKIPPED]
+    VisitStopInputType:
+      type: string
+      enum: [ADDRESS, PIN, LATLNG]
+    DayPlanStatus:
+      type: string
+      enum: [DRAFT, PUBLISHED]
+    LiveStatus:
+      type: string
+      enum: [MOVING, STATIONARY, OFFLINE]
+    OnboardingChannel:
+      type: string
+      enum: [WHATSAPP, EMAIL]
+    DeviceStore:
+      type: string
+      enum: [IOS, ANDROID, HUAWEI, UNKNOWN]
+
+    LoginInput:
+      type: object
+      required: [username, password]
+      properties:
+        username: { type: string }
+        password: { type: string }
+    LoginChallenge:
+      type: object
+      required: [loginToken, otpSentTo]
+      properties:
+        loginToken: { type: string, description: "Short-lived token identifying this login attempt, required to submit the OTP" }
+        otpSentTo: { type: string, description: "Masked email the OTP was sent to" }
+    VerifyOtpInput:
+      type: object
+      required: [loginToken, code]
+      properties:
+        loginToken: { type: string }
+        code: { type: string }
+    AuthSession:
+      type: object
+      required: [token, admin]
+      properties:
+        token: { type: string }
+        admin:
+          $ref: "#/components/schemas/AdminProfile"
+    AdminProfile:
+      type: object
+      required: [id, firstName, lastName, email, customerId, customerName]
+      properties:
+        id: { type: integer }
+        firstName: { type: string }
+        lastName: { type: string }
+        email: { type: string }
+        customerId: { type: integer }
+        customerName: { type: string }
+
+    Address:
+      type: object
+      required: [type, rawAddress, latitude, longitude]
+      properties:
+        type:
+          $ref: "#/components/schemas/AddressType"
+        rawAddress: { type: string }
+        latitude: { type: number }
+        longitude: { type: number }
+    AddressInput:
+      type: object
+      required: [type, rawAddress]
+      properties:
+        type:
+          $ref: "#/components/schemas/AddressType"
+        rawAddress: { type: string, minLength: 1 }
+
+    MarkedPlace:
+      type: object
+      required: [id, userId, label, latitude, longitude]
+      properties:
+        id: { type: integer }
+        userId: { type: integer }
+        label: { type: string }
+        latitude: { type: number }
+        longitude: { type: number }
+    MarkedPlaceInput:
+      type: object
+      required: [label, rawAddress]
+      properties:
+        label: { type: string, minLength: 1 }
+        rawAddress: { type: string, minLength: 1 }
+
+    User:
+      type: object
+      required:
+        [
+          id,
+          customerId,
+          firstName,
+          lastName,
+          gender,
+          employeeCode,
+          phoneNumber,
+          email,
+          role,
+          status,
+          consentGivenAt,
+          createdAt,
+        ]
+      properties:
+        id: { type: integer }
+        customerId: { type: integer }
+        firstName: { type: string }
+        lastName: { type: string }
+        gender:
+          $ref: "#/components/schemas/Gender"
+        employeeCode: { type: string }
+        phoneNumber: { type: string }
+        email: { type: string }
+        role:
+          $ref: "#/components/schemas/UserRole"
+        status:
+          $ref: "#/components/schemas/UserStatus"
+        consentGivenAt: { type: ["string", "null"], format: date-time }
+        createdAt: { type: string, format: date-time }
+    UserDetail:
+      allOf:
+        - $ref: "#/components/schemas/User"
+        - type: object
+          required: [addresses, markedPlaces]
+          properties:
+            addresses:
+              type: array
+              items:
+                $ref: "#/components/schemas/Address"
+            markedPlaces:
+              type: array
+              items:
+                $ref: "#/components/schemas/MarkedPlace"
+    UserInput:
+      type: object
+      required:
+        [firstName, lastName, gender, employeeCode, phoneNumber, email, role, addresses]
+      properties:
+        firstName: { type: string, minLength: 1 }
+        lastName: { type: string, minLength: 1 }
+        gender:
+          $ref: "#/components/schemas/Gender"
+        employeeCode: { type: string, minLength: 1 }
+        phoneNumber: { type: string, minLength: 1 }
+        email: { type: string, minLength: 1 }
+        role:
+          $ref: "#/components/schemas/UserRole"
+        addresses:
+          type: array
+          items:
+            $ref: "#/components/schemas/AddressInput"
+        markedPlaces:
+          type: array
+          items:
+            $ref: "#/components/schemas/MarkedPlaceInput"
+    UserUpdate:
+      type: object
+      properties:
+        firstName: { type: string, minLength: 1 }
+        lastName: { type: string, minLength: 1 }
+        phoneNumber: { type: string, minLength: 1 }
+        email: { type: string, minLength: 1 }
+        status:
+          $ref: "#/components/schemas/UserStatus"
+    UserCreationResult:
+      type: object
+      required: [user]
+      properties:
+        user:
+          $ref: "#/components/schemas/User"
+        onboardingInvite:
+          $ref: "#/components/schemas/OnboardingInvite"
+
+    OnboardingInvite:
+      type: object
+      required: [userId, token, channel, deepLink, createdAt]
+      properties:
+        userId: { type: integer }
+        token: { type: string }
+        channel:
+          $ref: "#/components/schemas/OnboardingChannel"
+        deepLink: { type: string }
+        createdAt: { type: string, format: date-time }
+        usedAt: { type: ["string", "null"], format: date-time }
+    OnboardingLanding:
+      type: object
+      required: [userFirstName, status, consentGivenAt, iosStoreUrl, androidStoreUrl, huaweiStoreUrl]
+      properties:
+        userFirstName: { type: string }
+        status:
+          $ref: "#/components/schemas/UserStatus"
+        consentGivenAt: { type: ["string", "null"], format: date-time }
+        iosStoreUrl: { type: string }
+        androidStoreUrl: { type: string }
+        huaweiStoreUrl: { type: string }
+
+    EmergencyAlertInput:
+      type: object
+      properties:
+        message: { type: string }
+    EmergencyAlert:
+      type: object
+      required: [id, userId, triggeredByAdminId, message, triggeredAt, acknowledgedAt]
+      properties:
+        id: { type: integer }
+        userId: { type: integer }
+        triggeredByAdminId: { type: integer }
+        message: { type: string }
+        triggeredAt: { type: string, format: date-time }
+        acknowledgedAt: { type: ["string", "null"], format: date-time }
+
+    LiveSummary:
+      type: object
+      required: [activeCount, movingCount, stationaryCount, offlineCount, alertCount]
+      properties:
+        activeCount: { type: integer }
+        movingCount: { type: integer }
+        stationaryCount: { type: integer }
+        offlineCount: { type: integer }
+        alertCount: { type: integer }
+    LivePosition:
+      type: object
+      required:
+        [
+          userId,
+          firstName,
+          lastName,
+          employeeCode,
+          latitude,
+          longitude,
+          status,
+          speedKph,
+          recordedAt,
+        ]
+      properties:
+        userId: { type: integer }
+        firstName: { type: string }
+        lastName: { type: string }
+        employeeCode: { type: string }
+        latitude: { type: number }
+        longitude: { type: number }
+        status:
+          $ref: "#/components/schemas/LiveStatus"
+        speedKph: { type: ["number", "null"] }
+        recordedAt: { type: string, format: date-time }
+    SpeedSample:
+      type: object
+      required: [recordedAt, speedKph]
+      properties:
+        recordedAt: { type: string, format: date-time }
+        speedKph: { type: number }
+    ProximityResult:
+      type: object
+      required: [placeId, label, distanceMeters, durationSeconds, isCurrentlyHere]
+      properties:
+        placeId: { type: integer }
+        label: { type: string }
+        distanceMeters: { type: number }
+        durationSeconds: { type: number }
+        isCurrentlyHere: { type: boolean }
+    CurrentStopStatus:
+      type: object
+      required:
+        [
+          stopId,
+          customerCode,
+          label,
+          latitude,
+          longitude,
+          status,
+          distanceMeters,
+          etaSeconds,
+          dwellSeconds,
+          dwellPlaceLabel,
+        ]
+      properties:
+        stopId: { type: integer }
+        customerCode: { type: string }
+        label: { type: ["string", "null"] }
+        latitude: { type: number }
+        longitude: { type: number }
+        status:
+          $ref: "#/components/schemas/VisitStopStatus"
+        distanceMeters: { type: number }
+        etaSeconds: { type: number }
+        dwellSeconds: { type: ["integer", "null"] }
+        dwellPlaceLabel: { type: ["string", "null"] }
+
+    SessionRecord:
+      type: object
+      required: [id, userId, loginAt, loginLat, loginLng]
+      properties:
+        id: { type: integer }
+        userId: { type: integer }
+        loginAt: { type: string, format: date-time }
+        loginLat: { type: number }
+        loginLng: { type: number }
+        logoutAt: { type: ["string", "null"], format: date-time }
+        logoutLat: { type: ["number", "null"] }
+        logoutLng: { type: ["number", "null"] }
+
+    LocationPing:
+      type: object
+      required: [id, userId, latitude, longitude, recordedAt]
+      properties:
+        id: { type: integer }
+        userId: { type: integer }
+        latitude: { type: number }
+        longitude: { type: number }
+        speedKph: { type: ["number", "null"] }
+        accuracyM: { type: ["number", "null"] }
+        batteryLevel: { type: ["integer", "null"] }
+        recordedAt: { type: string, format: date-time }
+
+    DwellSegment:
+      type: object
+      required: [id, userId, latitude, longitude, enteredAt, durationSeconds]
+      properties:
+        id: { type: integer }
+        userId: { type: integer }
+        latitude: { type: number }
+        longitude: { type: number }
+        placeLabel: { type: ["string", "null"] }
+        enteredAt: { type: string, format: date-time }
+        exitedAt: { type: ["string", "null"], format: date-time }
+        durationSeconds: { type: integer }
+    PlacesCalendarDay:
+      type: object
+      required: [date, places]
+      properties:
+        date: { type: string, format: date }
+        places:
+          type: array
+          items:
+            $ref: "#/components/schemas/PlacesCalendarEntry"
+    PlacesCalendarEntry:
+      type: object
+      required: [label, totalDwellSeconds]
+      properties:
+        label: { type: string }
+        totalDwellSeconds: { type: integer }
+
+    VisitStop:
+      type: object
+      required:
+        [
+          id,
+          userId,
+          dayPlanId,
+          visitDate,
+          sequence,
+          priority,
+          customerCode,
+          label,
+          inputType,
+          rawInput,
+          latitude,
+          longitude,
+          status,
+        ]
+      properties:
+        id: { type: integer }
+        userId: { type: integer }
+        dayPlanId: { type: integer }
+        visitDate: { type: string, format: date }
+        sequence: { type: ["integer", "null"] }
+        priority:
+          $ref: "#/components/schemas/VisitStopPriority"
+        customerCode: { type: string }
+        label: { type: ["string", "null"] }
+        inputType:
+          $ref: "#/components/schemas/VisitStopInputType"
+        rawInput: { type: string }
+        latitude: { type: number }
+        longitude: { type: number }
+        status:
+          $ref: "#/components/schemas/VisitStopStatus"
+        plannedArrivalAt: { type: ["string", "null"], format: date-time }
+        actualArrivalAt: { type: ["string", "null"], format: date-time }
+    VisitStopInput:
+      type: object
+      required: [visitDate, priority, customerCode, inputType, rawInput]
+      properties:
+        visitDate: { type: string, format: date }
+        priority:
+          $ref: "#/components/schemas/VisitStopPriority"
+        customerCode: { type: string, minLength: 1 }
+        label: { type: string }
+        inputType:
+          $ref: "#/components/schemas/VisitStopInputType"
+        rawInput: { type: string, minLength: 1 }
+    VisitStopUpdate:
+      type: object
+      properties:
+        priority:
+          $ref: "#/components/schemas/VisitStopPriority"
+        customerCode: { type: string, minLength: 1 }
+        label: { type: string }
+        status:
+          $ref: "#/components/schemas/VisitStopStatus"
+
+    DayPlanDetail:
+      type: object
+      required:
+        [
+          id,
+          userId,
+          visitDate,
+          status,
+          totalDistanceMeters,
+          totalEtaSeconds,
+          stops,
+        ]
+      properties:
+        id: { type: integer }
+        userId: { type: integer }
+        visitDate: { type: string, format: date }
+        status:
+          $ref: "#/components/schemas/DayPlanStatus"
+        publishedAt: { type: ["string", "null"], format: date-time }
+        totalDistanceMeters: { type: number }
+        totalEtaSeconds: { type: number }
+        stops:
+          type: array
+          items:
+            $ref: "#/components/schemas/VisitStop"
+
+    PublicTrackLink:
+      type: object
+      required: [token, url, expiresAt]
+      properties:
+        token: { type: string }
+        url: { type: string }
+        expiresAt: { type: string, format: date-time }
+        revokedAt: { type: ["string", "null"], format: date-time }
+    PublicTrackView:
+      type: object
+      required:
+        [
+          agentFirstName,
+          agentLat,
+          agentLng,
+          destLat,
+          destLng,
+          distanceMeters,
+          etaSeconds,
+          status,
+          updatedAt,
+        ]
+      properties:
+        agentFirstName: { type: string }
+        agentLat: { type: number }
+        agentLng: { type: number }
+        destLat: { type: number }
+        destLng: { type: number }
+        distanceMeters: { type: number }
+        etaSeconds: { type: number }
+        status:
+          $ref: "#/components/schemas/VisitStopStatus"
+        updatedAt: { type: string, format: date-time }
+
+    IngestLocationPing:
+      type: object
+      required: [userId, latitude, longitude, recordedAt]
+      properties:
+        userId: { type: integer }
+        latitude: { type: number }
+        longitude: { type: number }
+        accuracyM: { type: number }
+        batteryLevel: { type: integer }
+        recordedAt: { type: string, format: date-time }
+    IngestLocationInput:
+      type: object
+      required: [pings]
+      properties:
+        pings:
+          type: array
+          items:
+            $ref: "#/components/schemas/IngestLocationPing"
+    IngestSessionInput:
+      type: object
+      required: [userId, event, latitude, longitude, at]
+      properties:
+        userId: { type: integer }
+        event: { type: string, enum: [LOGIN, LOGOUT] }
+        latitude: { type: number }
+        longitude: { type: number }
+        at: { type: string, format: date-time }
+
+    SimulatorStatus:
+      type: object
+      required: [running]
+      properties:
+        running: { type: boolean }
+    SimulatorToggleInput:
+      type: object
+      required: [running]
+      properties:
+        running: { type: boolean }
 
