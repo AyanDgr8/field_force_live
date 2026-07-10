@@ -1,4 +1,5 @@
 import path from 'path';
+import fs from 'node:fs';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { defineConfig } from 'vite';
@@ -28,6 +29,20 @@ if (!basePath) {
 }
 
 const apiProxyTarget = process.env.API_PROXY_TARGET;
+const useHttps = process.env.USE_HTTPS === 'true';
+const appRoot = process.env.APP_ROOT
+  ? path.resolve(process.env.APP_ROOT)
+  : path.resolve(import.meta.dirname, '../..');
+const httpsOptions = useHttps
+  ? {
+      key: fs.readFileSync(
+        path.resolve(appRoot, process.env.SSL_KEY_PATH ?? 'ssl/privkey.pem'),
+      ),
+      cert: fs.readFileSync(
+        path.resolve(appRoot, process.env.SSL_CERT_PATH ?? 'ssl/fullchain.pem'),
+      ),
+    }
+  : undefined;
 
 export default defineConfig({
   base: basePath,
@@ -68,6 +83,7 @@ export default defineConfig({
   },
   server: {
     port,
+    https: httpsOptions,
     strictPort: true,
     host: '0.0.0.0',
     allowedHosts: true,
@@ -91,6 +107,7 @@ export default defineConfig({
   },
   preview: {
     port,
+    https: httpsOptions,
     host: '0.0.0.0',
     allowedHosts: true,
   },

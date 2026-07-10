@@ -1,6 +1,6 @@
 import { defineConfig } from "drizzle-kit";
 import { existsSync } from "fs";
-import path from "path";
+import * as path from "path";
 
 // drizzle-kit is invoked directly rather than through the api-server entrypoint,
 // so it has to pick up the root .env itself.

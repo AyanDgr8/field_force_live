@@ -47,6 +47,7 @@ const api = run("artifacts/api-server", {
 
 const frontend = run("artifacts/fieldforce-admin", {
   PORT: frontendPort,
+  APP_ROOT: process.cwd(),
   BASE_PATH: process.env.BASE_PATH ?? "/",
   API_PROXY_TARGET:
     process.env.API_PROXY_TARGET ?? `${apiProtocol}://localhost:${apiPort}`,
