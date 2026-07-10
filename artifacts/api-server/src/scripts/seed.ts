@@ -1,13 +1,20 @@
-import { db } from "@workspace/db";
+import { db, insertReturning } from "@workspace/db";
 import {
   customersTable,
   usersTable,
   addressesTable,
   markedPlacesTable,
   credentialsTable,
+  otpTokensTable,
   onboardingInvitesTable,
   dayPlansTable,
   visitStopsTable,
+  sessionsTable,
+  locationPingsTable,
+  dwellSegmentsTable,
+  emergencyAlertsTable,
+  statusEventsTable,
+  dispositionsTable,
 } from "@workspace/db";
 import bcrypt from "bcryptjs";
 import { v4 as uuidv4 } from "uuid";
@@ -37,6 +44,11 @@ const fieldEmployees = [
   { firstName: "Deepak", lastName: "Pandey", gender: "MALE" as const, phone: "+919876543222", email: "deepak.pandey@acme.in" },
   { firstName: "Pooja", lastName: "Tiwari", gender: "FEMALE" as const, phone: "+919876543223", email: "pooja.tiwari@acme.in" },
   { firstName: "Karan", lastName: "Malhotra", gender: "MALE" as const, phone: "+919876543224", email: "karan.malhotra@acme.in" },
+  { firstName: "Aveek", lastName: "User", gender: "OTHER" as const, phone: "+919811066504", email: "aveek@multycomm.com" },
+  { firstName: "Akash", lastName: "User", gender: "OTHER" as const, phone: "+919582871034", email: "akash@multycomm.com" },
+  { firstName: "Deepak", lastName: "User", gender: "OTHER" as const, phone: "+919958130128", email: "deepak@multycomm.com" },
+  { firstName: "Shivam", lastName: "User", gender: "OTHER" as const, phone: "+919910149171", email: "shivam@multycomm.com" },
+  { firstName: "Ayan", lastName: "User", gender: "OTHER" as const, phone: "+918800154017", email: "ayan@multycomm.com" },
 ];
 
 async function main() {
@@ -44,18 +56,25 @@ async function main() {
 
   // Wipe existing demo data (order matters for FK constraints)
   logger.info("Wiping existing data...");
+  await db.delete(statusEventsTable);
+  await db.delete(emergencyAlertsTable);
+  await db.delete(dwellSegmentsTable);
+  await db.delete(locationPingsTable);
+  await db.delete(sessionsTable);
   await db.delete(visitStopsTable);
   await db.delete(dayPlansTable);
   await db.delete(onboardingInvitesTable);
+  await db.delete(otpTokensTable);
   await db.delete(credentialsTable);
   await db.delete(markedPlacesTable);
   await db.delete(addressesTable);
+  await db.delete(dispositionsTable);
   await db.delete(usersTable);
   await db.delete(customersTable);
 
   // Create customer
   logger.info("Creating customer...");
-  const [customer] = await db.insert(customersTable).values({ name: "Acme Field Services" }).returning();
+  const customer = await insertReturning(customersTable, { name: "Acme Field Services" });
 
   // Create admin users
   logger.info("Creating admin users...");
@@ -64,7 +83,7 @@ async function main() {
 
   const adminUsers = [];
   for (let i = 1; i <= 2; i++) {
-    const [admin] = await db.insert(usersTable).values({
+    const admin = await insertReturning(usersTable, {
       customerId: customer.id,
       firstName: `Admin${i}`,
       lastName: "User",
@@ -75,7 +94,7 @@ async function main() {
       role: "ADMIN",
       status: "ACTIVE",
       consentGivenAt: new Date(),
-    }).returning();
+    });
 
     const passwordHash = await bcrypt.hash(adminPassword, 10);
     await db.insert(credentialsTable).values({
@@ -90,13 +109,13 @@ async function main() {
   logger.info({ username: "admin2", password: adminPassword }, "Demo admin 2 credentials");
 
   // Create field employees
-  logger.info("Creating 15 field employees...");
+  logger.info(`Creating ${fieldEmployees.length} field employees...`);
   const createdUsers = [];
   for (let i = 0; i < fieldEmployees.length; i++) {
     const emp = fieldEmployees[i];
     const empCode = `EMP${String(i + 1).padStart(3, "0")}`;
 
-    const [user] = await db.insert(usersTable).values({
+    const user = await insertReturning(usersTable, {
       customerId: customer.id,
       firstName: emp.firstName,
       lastName: emp.lastName,
@@ -107,7 +126,7 @@ async function main() {
       role: "USER",
       status: "ACTIVE",
       consentGivenAt: new Date(),
-    }).returning();
+    });
 
     // Add base address
     const { lat, lng } = randomDelhiNcr();
@@ -154,6 +173,33 @@ async function main() {
     createdUsers.push({ user, baseLat: lat, baseLng: lng });
   }
 
+  // Create default dispositions
+  logger.info("Creating default dispositions...");
+  const defaultDispositions = [
+    { label: "Person not available", sortOrder: 1 },
+    { label: "Premises locked", sortOrder: 2 },
+    { label: "Work completed partially", sortOrder: 3 },
+    { label: "Visit completed successfully", sortOrder: 4 },
+  ];
+  for (const d of defaultDispositions) {
+    await db.insert(dispositionsTable).values({
+      customerId: customer.id,
+      label: d.label,
+      active: true,
+      sortOrder: d.sortOrder,
+    });
+  }
+
+  // Contact data for seeded stops
+  const contactNames = [
+    "Rajesh Gupta", "Priya Mehta", "Sunil Sharma", "Anita Verma", "Deepak Singh",
+    "Kavita Patel", "Mohan Yadav",
+  ];
+  const contactPhones = [
+    "+919811001001", "+919811002002", "+919811003003", "+919811004004",
+    "+919811005005", "+919811006006", "+919811007007",
+  ];
+
   // Create day plans for ~5 employees
   logger.info("Creating day plans for first 5 employees...");
   const today = new Date().toISOString().slice(0, 10);
@@ -163,10 +209,10 @@ async function main() {
   for (let i = 0; i < 5; i++) {
     const { user, baseLat, baseLng } = createdUsers[i];
 
-    const [plan] = await db.insert(dayPlansTable).values({
+    const plan = await insertReturning(dayPlansTable, {
       userId: user.id,
       visitDate: today,
-    }).returning();
+    });
 
     const stopCount = Math.floor(Math.random() * 3) + 3; // 3-5 stops
     for (let j = 0; j < stopCount; j++) {
@@ -184,6 +230,8 @@ async function main() {
         rawInput: `${Math.floor(Math.random() * 500) + 1}, Sector ${Math.floor(Math.random() * 50) + 1}, Delhi NCR`,
         latitude: lat,
         longitude: lng,
+        contactName: contactNames[j % contactNames.length],
+        contactPhone: contactPhones[j % contactPhones.length],
       });
     }
   }

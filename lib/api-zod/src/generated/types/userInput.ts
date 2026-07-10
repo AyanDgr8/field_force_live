@@ -22,6 +22,7 @@ export interface UserInput {
   phoneNumber: string;
   /** @minLength 1 */
   email: string;
+  username?: string;
   role: UserRole;
   addresses: AddressInput[];
   markedPlaces?: MarkedPlaceInput[];

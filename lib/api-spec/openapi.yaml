@@ -32,6 +32,12 @@ tags:
     description: Onboarding invites and consent
   - name: simulator
     description: Demo location simulator
+  - name: dispositions
+    description: Admin-configurable disposition list
+  - name: mobile-auth
+    description: Mobile app authentication
+  - name: mobile-status
+    description: Mobile app status reporting
 paths:
   /healthz:
     get:
@@ -760,6 +766,261 @@ paths:
         "404":
           description: No published plan for that date
 
+  # ---------- Dispositions (admin CRUD) ----------
+  /dispositions:
+    get:
+      operationId: listDispositions
+      tags: [dispositions]
+      summary: List all dispositions for the admin's customer
+      responses:
+        "200":
+          description: Dispositions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Disposition"
+    post:
+      operationId: createDisposition
+      tags: [dispositions]
+      summary: Create a disposition label
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DispositionInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Disposition"
+  /dispositions/{id}:
+    patch:
+      operationId: updateDisposition
+      tags: [dispositions]
+      summary: Update a disposition
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DispositionUpdate"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Disposition"
+        "404":
+          description: Not found
+    delete:
+      operationId: deleteDisposition
+      tags: [dispositions]
+      summary: Delete a disposition
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "204":
+          description: Deleted
+
+  # ---------- Config (mobile-facing, no auth) ----------
+  /config/dispositions:
+    get:
+      operationId: getConfigDispositions
+      tags: [dispositions]
+      summary: Active dispositions for a customer (mobile-facing, no auth)
+      parameters:
+        - name: customerId
+          in: query
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Active dispositions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Disposition"
+
+  # ---------- Attendance ----------
+  /attendance:
+    get:
+      operationId: getUserAttendanceReport
+      tags: [history]
+      summary: Attendance records derived from sessions for a user in a date range
+      parameters:
+        - name: userId
+          in: query
+          required: true
+          schema: { type: integer }
+        - name: from
+          in: query
+          schema: { type: string, format: date }
+        - name: to
+          in: query
+          schema: { type: string, format: date }
+      responses:
+        "200":
+          description: Attendance records
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AttendanceRecord"
+
+  # ---------- Mobile auth ----------
+  /user/auth/login:
+    post:
+      operationId: mobileLogin
+      tags: [mobile-auth]
+      summary: Mobile user login with identifier + password
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MobileLoginInput"
+      responses:
+        "200":
+          description: Authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MobileAuthSession"
+        "401":
+          description: Invalid credentials
+  /user/auth/otp/request:
+    post:
+      operationId: requestMobileOtp
+      tags: [mobile-auth]
+      summary: Request an OTP for mobile login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MobileOtpRequestInput"
+      responses:
+        "200":
+          description: OTP sent
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginChallenge"
+  /user/auth/otp/verify:
+    post:
+      operationId: verifyMobileOtp
+      tags: [mobile-auth]
+      summary: Verify mobile OTP and return device token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VerifyOtpInput"
+      responses:
+        "200":
+          description: Authenticated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MobileAuthSession"
+        "401":
+          description: Invalid or expired OTP
+
+  # ---------- Mobile status ----------
+  /user/status:
+    post:
+      operationId: postUserStatus
+      tags: [mobile-status]
+      summary: Update field user live status (IDLE or BUSY)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserStatusInput"
+      responses:
+        "200":
+          description: Status updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserStatusResult"
+  /user/emergency:
+    post:
+      operationId: postUserEmergency
+      tags: [mobile-status]
+      summary: Raise or clear a user emergency
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserEmergencyInput"
+      responses:
+        "200":
+          description: Emergency state updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserEmergencyResult"
+  /user/visit/{visitStopId}/disposition:
+    post:
+      operationId: closeVisitStop
+      tags: [mobile-status]
+      summary: Close a visit stop with a disposition
+      parameters:
+        - name: visitStopId
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CloseVisitStopInput"
+      responses:
+        "200":
+          description: Visit stop closed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VisitStop"
+        "404":
+          description: Not found
+  /user/push-token:
+    post:
+      operationId: registerPushToken
+      tags: [mobile-status]
+      summary: Register a push notification token (stub — logs only, no storage)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PushTokenInput"
+      responses:
+        "204":
+          description: Registered
+
   # ---------- Simulator ----------
   /simulator/status:
     get:
@@ -828,7 +1089,13 @@ components:
       enum: [DRAFT, PUBLISHED]
     LiveStatus:
       type: string
-      enum: [MOVING, STATIONARY, OFFLINE]
+      enum: [MOVING, STATIONARY, OFFLINE, ON_SHIFT_IDLE, BUSY]
+    StoredLiveStatus:
+      type: string
+      enum: [OFFLINE, ON_SHIFT_IDLE, BUSY]
+    PushPlatform:
+      type: string
+      enum: [FCM, APNS, HMS]
     OnboardingChannel:
       type: string
       enum: [WHATSAPP, EMAIL]
@@ -964,6 +1231,7 @@ components:
         employeeCode: { type: string, minLength: 1 }
         phoneNumber: { type: string, minLength: 1 }
         email: { type: string, minLength: 1 }
+        username: { type: string }
         role:
           $ref: "#/components/schemas/UserRole"
         addresses:
@@ -1021,14 +1289,17 @@ components:
         message: { type: string }
     EmergencyAlert:
       type: object
-      required: [id, userId, triggeredByAdminId, message, triggeredAt, acknowledgedAt]
+      required: [id, userId, message, triggeredAt, acknowledgedAt]
       properties:
         id: { type: integer }
         userId: { type: integer }
-        triggeredByAdminId: { type: integer }
+        triggeredByAdminId: { type: ["integer", "null"] }
         message: { type: string }
         triggeredAt: { type: string, format: date-time }
         acknowledgedAt: { type: ["string", "null"], format: date-time }
+        direction: { type: string, enum: [ADMIN_TO_USER, USER_TO_ADMIN] }
+        lat: { type: ["number", "null"] }
+        lng: { type: ["number", "null"] }
 
     LiveSummary:
       type: object
@@ -1062,6 +1333,11 @@ components:
         longitude: { type: number }
         status:
           $ref: "#/components/schemas/LiveStatus"
+        liveStatus:
+          $ref: "#/components/schemas/StoredLiveStatus"
+        liveStatusSince: { type: ["string", "null"], format: date-time }
+        emergencyActive: { type: boolean }
+        currentVisitStopId: { type: ["integer", "null"] }
         speedKph: { type: ["number", "null"] }
         recordedAt: { type: string, format: date-time }
     SpeedSample:
@@ -1198,6 +1474,13 @@ components:
           $ref: "#/components/schemas/VisitStopStatus"
         plannedArrivalAt: { type: ["string", "null"], format: date-time }
         actualArrivalAt: { type: ["string", "null"], format: date-time }
+        contactName: { type: ["string", "null"] }
+        contactPhone: { type: ["string", "null"] }
+        reachedAt: { type: ["string", "null"], format: date-time }
+        startedAt: { type: ["string", "null"], format: date-time }
+        closedAt: { type: ["string", "null"], format: date-time }
+        dispositionId: { type: ["integer", "null"] }
+        notes: { type: ["string", "null"] }
     VisitStopInput:
       type: object
       required: [visitDate, priority, customerCode, inputType, rawInput]
@@ -1210,6 +1493,8 @@ components:
         inputType:
           $ref: "#/components/schemas/VisitStopInputType"
         rawInput: { type: string, minLength: 1 }
+        contactName: { type: string }
+        contactPhone: { type: string }
     VisitStopUpdate:
       type: object
       properties:
@@ -1318,4 +1603,124 @@ components:
       required: [running]
       properties:
         running: { type: boolean }
+
+    Disposition:
+      type: object
+      required: [id, customerId, label, active, sortOrder]
+      properties:
+        id: { type: integer }
+        customerId: { type: integer }
+        label: { type: string }
+        active: { type: boolean }
+        sortOrder: { type: integer }
+    DispositionInput:
+      type: object
+      required: [label]
+      properties:
+        label: { type: string, minLength: 1 }
+        active: { type: boolean }
+        sortOrder: { type: integer }
+    DispositionUpdate:
+      type: object
+      properties:
+        label: { type: string, minLength: 1 }
+        active: { type: boolean }
+        sortOrder: { type: integer }
+
+    AttendanceRecord:
+      type: object
+      required: [date, loginAt, loginLat, loginLng]
+      properties:
+        date: { type: string, format: date }
+        loginAt: { type: string, format: date-time }
+        loginLat: { type: number }
+        loginLng: { type: number }
+        logoutAt: { type: ["string", "null"], format: date-time }
+        logoutLat: { type: ["number", "null"] }
+        logoutLng: { type: ["number", "null"] }
+        totalHours: { type: ["number", "null"] }
+
+    MobileLoginInput:
+      type: object
+      required: [identifier, password]
+      properties:
+        identifier: { type: string }
+        password: { type: string }
+    MobileOtpRequestInput:
+      type: object
+      required: [identifier]
+      properties:
+        identifier: { type: string }
+    MobileUser:
+      type: object
+      required: [id, firstName, lastName, email, employeeCode, customerId, role]
+      properties:
+        id: { type: integer }
+        firstName: { type: string }
+        lastName: { type: string }
+        email: { type: string }
+        employeeCode: { type: string }
+        customerId: { type: integer }
+        role:
+          $ref: "#/components/schemas/UserRole"
+    MobileAuthSession:
+      type: object
+      required: [deviceToken, user]
+      properties:
+        deviceToken: { type: string }
+        user:
+          $ref: "#/components/schemas/MobileUser"
+
+    UserStatusInput:
+      type: object
+      required: [userId, status, lat, lng, at]
+      properties:
+        userId: { type: integer }
+        status: { type: string, enum: [IDLE, BUSY] }
+        visitStopId: { type: integer }
+        lat: { type: number }
+        lng: { type: number }
+        at: { type: string, format: date-time }
+    UserStatusResult:
+      type: object
+      required: [userId, status]
+      properties:
+        userId: { type: integer }
+        status: { type: string, enum: [IDLE, BUSY] }
+
+    UserEmergencyInput:
+      type: object
+      required: [userId, active, lat, lng]
+      properties:
+        userId: { type: integer }
+        active: { type: boolean }
+        lat: { type: number }
+        lng: { type: number }
+    UserEmergencyResult:
+      type: object
+      required: [userId, emergencyActive]
+      properties:
+        userId: { type: integer }
+        emergencyActive: { type: boolean }
+
+    CloseVisitStopInput:
+      type: object
+      required: [dispositionId, closedAt]
+      properties:
+        dispositionId: { type: integer }
+        notes: { type: string, maxLength: 250 }
+        reachedAt: { type: string, format: date-time }
+        startedAt: { type: string, format: date-time }
+        closedAt: { type: string, format: date-time }
+        lat: { type: number }
+        lng: { type: number }
+
+    PushTokenInput:
+      type: object
+      required: [userId, token, platform]
+      properties:
+        userId: { type: integer }
+        token: { type: string }
+        platform:
+          $ref: "#/components/schemas/PushPlatform"
 

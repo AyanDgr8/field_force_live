@@ -1,1 +1,2 @@
 - [Express sub-router mount-order footgun](express-subrouter-auth-ordering.md) — a bare `router.use(requireAuth)` inside one sub-router mounted at "/" blocks ALL other sub-routers mounted after it, including unrelated public ones.
+- [FieldForce emergencyActive/alert sync](fieldforce-emergency-alert-sync.md) — `users.emergencyActive` must be kept in lockstep with open emergency_alerts rows on every insert/ack path, or the live view desyncs from the alert feed.

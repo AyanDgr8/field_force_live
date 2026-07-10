@@ -27,6 +27,8 @@ if (!basePath) {
   );
 }
 
+const apiProxyTarget = process.env.API_PROXY_TARGET;
+
 export default defineConfig({
   base: basePath,
   plugins: [
@@ -72,6 +74,12 @@ export default defineConfig({
     fs: {
       strict: true,
     },
+    // The generated API client requests relative `/api/...` paths. In deployment a
+    // router forwards those to the api-server; locally nothing does, so opt in by
+    // pointing API_PROXY_TARGET at the running api-server.
+    ...(apiProxyTarget
+      ? { proxy: { '/api': { target: apiProxyTarget, changeOrigin: true } } }
+      : {}),
   },
   preview: {
     port,

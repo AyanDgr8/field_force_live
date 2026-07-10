@@ -29,4 +29,18 @@ export interface VisitStop {
   plannedArrivalAt?: Date | null;
   /** @nullable */
   actualArrivalAt?: Date | null;
+  /** @nullable */
+  contactName?: string | null;
+  /** @nullable */
+  contactPhone?: string | null;
+  /** @nullable */
+  reachedAt?: Date | null;
+  /** @nullable */
+  startedAt?: Date | null;
+  /** @nullable */
+  closedAt?: Date | null;
+  /** @nullable */
+  dispositionId?: number | null;
+  /** @nullable */
+  notes?: string | null;
 }

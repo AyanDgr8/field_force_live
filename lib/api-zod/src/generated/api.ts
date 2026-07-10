@@ -116,6 +116,7 @@ export const CreateUserBody = zod.object({
   "employeeCode": zod.string().min(1),
   "phoneNumber": zod.string().min(1),
   "email": zod.string().min(1),
+  "username": zod.string().optional(),
   "role": zod.enum(['ADMIN', 'USER']),
   "addresses": zod.array(zod.object({
   "type": zod.enum(['OFFICE', 'BASE_OFFICE', 'SITE_OFFICE', 'HOME']),
@@ -258,10 +259,13 @@ export const TriggerEmergencyAlertBody = zod.object({
 export const TriggerEmergencyAlertResponse = zod.object({
   "id": zod.number(),
   "userId": zod.number(),
-  "triggeredByAdminId": zod.number(),
+  "triggeredByAdminId": zod.number().nullish(),
   "message": zod.string(),
   "triggeredAt": zod.coerce.date(),
-  "acknowledgedAt": zod.coerce.date().nullable()
+  "acknowledgedAt": zod.coerce.date().nullable(),
+  "direction": zod.enum(['ADMIN_TO_USER', 'USER_TO_ADMIN']).optional(),
+  "lat": zod.number().nullish(),
+  "lng": zod.number().nullish()
 })
 
 
@@ -275,10 +279,13 @@ export const ListUserAlertsParams = zod.object({
 export const ListUserAlertsResponseItem = zod.object({
   "id": zod.number(),
   "userId": zod.number(),
-  "triggeredByAdminId": zod.number(),
+  "triggeredByAdminId": zod.number().nullish(),
   "message": zod.string(),
   "triggeredAt": zod.coerce.date(),
-  "acknowledgedAt": zod.coerce.date().nullable()
+  "acknowledgedAt": zod.coerce.date().nullable(),
+  "direction": zod.enum(['ADMIN_TO_USER', 'USER_TO_ADMIN']).optional(),
+  "lat": zod.number().nullish(),
+  "lng": zod.number().nullish()
 })
 export const ListUserAlertsResponse = zod.array(ListUserAlertsResponseItem)
 
@@ -357,7 +364,11 @@ export const GetLivePositionsResponseItem = zod.object({
   "employeeCode": zod.string(),
   "latitude": zod.number(),
   "longitude": zod.number(),
-  "status": zod.enum(['MOVING', 'STATIONARY', 'OFFLINE']),
+  "status": zod.enum(['MOVING', 'STATIONARY', 'OFFLINE', 'ON_SHIFT_IDLE', 'BUSY']),
+  "liveStatus": zod.enum(['OFFLINE', 'ON_SHIFT_IDLE', 'BUSY']).optional(),
+  "liveStatusSince": zod.coerce.date().nullish(),
+  "emergencyActive": zod.boolean().optional(),
+  "currentVisitStopId": zod.number().nullish(),
   "speedKph": zod.number().nullable(),
   "recordedAt": zod.coerce.date()
 })
@@ -528,7 +539,14 @@ export const GetUserDayPlanResponse = zod.object({
   "longitude": zod.number(),
   "status": zod.enum(['PENDING', 'EN_ROUTE', 'REACHED', 'COMPLETED', 'SKIPPED']),
   "plannedArrivalAt": zod.coerce.date().nullish(),
-  "actualArrivalAt": zod.coerce.date().nullish()
+  "actualArrivalAt": zod.coerce.date().nullish(),
+  "contactName": zod.string().nullish(),
+  "contactPhone": zod.string().nullish(),
+  "reachedAt": zod.coerce.date().nullish(),
+  "startedAt": zod.coerce.date().nullish(),
+  "closedAt": zod.coerce.date().nullish(),
+  "dispositionId": zod.number().nullish(),
+  "notes": zod.string().nullish()
 }))
 })
 
@@ -550,7 +568,9 @@ export const CreateVisitStopBody = zod.object({
   "customerCode": zod.string().min(1),
   "label": zod.string().optional(),
   "inputType": zod.enum(['ADDRESS', 'PIN', 'LATLNG']),
-  "rawInput": zod.string().min(1)
+  "rawInput": zod.string().min(1),
+  "contactName": zod.string().optional(),
+  "contactPhone": zod.string().optional()
 })
 
 export const CreateVisitStopResponse = zod.object({
@@ -568,7 +588,14 @@ export const CreateVisitStopResponse = zod.object({
   "longitude": zod.number(),
   "status": zod.enum(['PENDING', 'EN_ROUTE', 'REACHED', 'COMPLETED', 'SKIPPED']),
   "plannedArrivalAt": zod.coerce.date().nullish(),
-  "actualArrivalAt": zod.coerce.date().nullish()
+  "actualArrivalAt": zod.coerce.date().nullish(),
+  "contactName": zod.string().nullish(),
+  "contactPhone": zod.string().nullish(),
+  "reachedAt": zod.coerce.date().nullish(),
+  "startedAt": zod.coerce.date().nullish(),
+  "closedAt": zod.coerce.date().nullish(),
+  "dispositionId": zod.number().nullish(),
+  "notes": zod.string().nullish()
 })
 
 
@@ -604,7 +631,14 @@ export const UpdateVisitStopResponse = zod.object({
   "longitude": zod.number(),
   "status": zod.enum(['PENDING', 'EN_ROUTE', 'REACHED', 'COMPLETED', 'SKIPPED']),
   "plannedArrivalAt": zod.coerce.date().nullish(),
-  "actualArrivalAt": zod.coerce.date().nullish()
+  "actualArrivalAt": zod.coerce.date().nullish(),
+  "contactName": zod.string().nullish(),
+  "contactPhone": zod.string().nullish(),
+  "reachedAt": zod.coerce.date().nullish(),
+  "startedAt": zod.coerce.date().nullish(),
+  "closedAt": zod.coerce.date().nullish(),
+  "dispositionId": zod.number().nullish(),
+  "notes": zod.string().nullish()
 })
 
 
@@ -649,7 +683,14 @@ export const PlanRouteResponse = zod.object({
   "longitude": zod.number(),
   "status": zod.enum(['PENDING', 'EN_ROUTE', 'REACHED', 'COMPLETED', 'SKIPPED']),
   "plannedArrivalAt": zod.coerce.date().nullish(),
-  "actualArrivalAt": zod.coerce.date().nullish()
+  "actualArrivalAt": zod.coerce.date().nullish(),
+  "contactName": zod.string().nullish(),
+  "contactPhone": zod.string().nullish(),
+  "reachedAt": zod.coerce.date().nullish(),
+  "startedAt": zod.coerce.date().nullish(),
+  "closedAt": zod.coerce.date().nullish(),
+  "dispositionId": zod.number().nullish(),
+  "notes": zod.string().nullish()
 }))
 })
 
@@ -684,7 +725,14 @@ export const PublishDayPlanResponse = zod.object({
   "longitude": zod.number(),
   "status": zod.enum(['PENDING', 'EN_ROUTE', 'REACHED', 'COMPLETED', 'SKIPPED']),
   "plannedArrivalAt": zod.coerce.date().nullish(),
-  "actualArrivalAt": zod.coerce.date().nullish()
+  "actualArrivalAt": zod.coerce.date().nullish(),
+  "contactName": zod.string().nullish(),
+  "contactPhone": zod.string().nullish(),
+  "reachedAt": zod.coerce.date().nullish(),
+  "startedAt": zod.coerce.date().nullish(),
+  "closedAt": zod.coerce.date().nullish(),
+  "dispositionId": zod.number().nullish(),
+  "notes": zod.string().nullish()
 }))
 })
 
@@ -849,9 +897,274 @@ export const GetMobileDayPlanResponse = zod.object({
   "longitude": zod.number(),
   "status": zod.enum(['PENDING', 'EN_ROUTE', 'REACHED', 'COMPLETED', 'SKIPPED']),
   "plannedArrivalAt": zod.coerce.date().nullish(),
-  "actualArrivalAt": zod.coerce.date().nullish()
+  "actualArrivalAt": zod.coerce.date().nullish(),
+  "contactName": zod.string().nullish(),
+  "contactPhone": zod.string().nullish(),
+  "reachedAt": zod.coerce.date().nullish(),
+  "startedAt": zod.coerce.date().nullish(),
+  "closedAt": zod.coerce.date().nullish(),
+  "dispositionId": zod.number().nullish(),
+  "notes": zod.string().nullish()
 }))
 })
+
+
+/**
+ * @summary List all dispositions for the admin's customer
+ */
+export const ListDispositionsResponseItem = zod.object({
+  "id": zod.number(),
+  "customerId": zod.number(),
+  "label": zod.string(),
+  "active": zod.boolean(),
+  "sortOrder": zod.number()
+})
+export const ListDispositionsResponse = zod.array(ListDispositionsResponseItem)
+
+
+/**
+ * @summary Create a disposition label
+ */
+
+
+
+export const CreateDispositionBody = zod.object({
+  "label": zod.string().min(1),
+  "active": zod.boolean().optional(),
+  "sortOrder": zod.number().optional()
+})
+
+export const CreateDispositionResponse = zod.object({
+  "id": zod.number(),
+  "customerId": zod.number(),
+  "label": zod.string(),
+  "active": zod.boolean(),
+  "sortOrder": zod.number()
+})
+
+
+/**
+ * @summary Update a disposition
+ */
+export const UpdateDispositionParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+
+
+
+export const UpdateDispositionBody = zod.object({
+  "label": zod.string().min(1).optional(),
+  "active": zod.boolean().optional(),
+  "sortOrder": zod.number().optional()
+})
+
+export const UpdateDispositionResponse = zod.object({
+  "id": zod.number(),
+  "customerId": zod.number(),
+  "label": zod.string(),
+  "active": zod.boolean(),
+  "sortOrder": zod.number()
+})
+
+
+/**
+ * @summary Delete a disposition
+ */
+export const DeleteDispositionParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const DeleteDispositionResponse = zod.void()
+
+
+/**
+ * @summary Active dispositions for a customer (mobile-facing, no auth)
+ */
+export const GetConfigDispositionsQueryParams = zod.object({
+  "customerId": zod.coerce.number()
+})
+
+export const GetConfigDispositionsResponseItem = zod.object({
+  "id": zod.number(),
+  "customerId": zod.number(),
+  "label": zod.string(),
+  "active": zod.boolean(),
+  "sortOrder": zod.number()
+})
+export const GetConfigDispositionsResponse = zod.array(GetConfigDispositionsResponseItem)
+
+
+/**
+ * @summary Attendance records derived from sessions for a user in a date range
+ */
+export const GetUserAttendanceReportQueryParams = zod.object({
+  "userId": zod.coerce.number(),
+  "from": zod.date().optional(),
+  "to": zod.date().optional()
+})
+
+export const GetUserAttendanceReportResponseItem = zod.object({
+  "date": zod.coerce.date(),
+  "loginAt": zod.coerce.date(),
+  "loginLat": zod.number(),
+  "loginLng": zod.number(),
+  "logoutAt": zod.coerce.date().nullish(),
+  "logoutLat": zod.number().nullish(),
+  "logoutLng": zod.number().nullish(),
+  "totalHours": zod.number().nullish()
+})
+export const GetUserAttendanceReportResponse = zod.array(GetUserAttendanceReportResponseItem)
+
+
+/**
+ * @summary Mobile user login with identifier + password
+ */
+export const MobileLoginBody = zod.object({
+  "identifier": zod.string(),
+  "password": zod.string()
+})
+
+export const MobileLoginResponse = zod.object({
+  "deviceToken": zod.string(),
+  "user": zod.object({
+  "id": zod.number(),
+  "firstName": zod.string(),
+  "lastName": zod.string(),
+  "email": zod.string(),
+  "employeeCode": zod.string(),
+  "customerId": zod.number(),
+  "role": zod.enum(['ADMIN', 'USER'])
+})
+})
+
+
+/**
+ * @summary Request an OTP for mobile login
+ */
+export const RequestMobileOtpBody = zod.object({
+  "identifier": zod.string()
+})
+
+export const RequestMobileOtpResponse = zod.object({
+  "loginToken": zod.string().describe('Short-lived token identifying this login attempt, required to submit the OTP'),
+  "otpSentTo": zod.string().describe('Masked email the OTP was sent to')
+})
+
+
+/**
+ * @summary Verify mobile OTP and return device token
+ */
+export const VerifyMobileOtpBody = zod.object({
+  "loginToken": zod.string(),
+  "code": zod.string()
+})
+
+export const VerifyMobileOtpResponse = zod.object({
+  "deviceToken": zod.string(),
+  "user": zod.object({
+  "id": zod.number(),
+  "firstName": zod.string(),
+  "lastName": zod.string(),
+  "email": zod.string(),
+  "employeeCode": zod.string(),
+  "customerId": zod.number(),
+  "role": zod.enum(['ADMIN', 'USER'])
+})
+})
+
+
+/**
+ * @summary Update field user live status (IDLE or BUSY)
+ */
+export const PostUserStatusBody = zod.object({
+  "userId": zod.number(),
+  "status": zod.enum(['IDLE', 'BUSY']),
+  "visitStopId": zod.number().optional(),
+  "lat": zod.number(),
+  "lng": zod.number(),
+  "at": zod.coerce.date()
+})
+
+export const PostUserStatusResponse = zod.object({
+  "userId": zod.number(),
+  "status": zod.enum(['IDLE', 'BUSY'])
+})
+
+
+/**
+ * @summary Raise or clear a user emergency
+ */
+export const PostUserEmergencyBody = zod.object({
+  "userId": zod.number(),
+  "active": zod.boolean(),
+  "lat": zod.number(),
+  "lng": zod.number()
+})
+
+export const PostUserEmergencyResponse = zod.object({
+  "userId": zod.number(),
+  "emergencyActive": zod.boolean()
+})
+
+
+/**
+ * @summary Close a visit stop with a disposition
+ */
+export const CloseVisitStopParams = zod.object({
+  "visitStopId": zod.coerce.number()
+})
+
+export const closeVisitStopBodyNotesMax = 250;
+
+
+
+export const CloseVisitStopBody = zod.object({
+  "dispositionId": zod.number(),
+  "notes": zod.string().max(closeVisitStopBodyNotesMax).optional(),
+  "reachedAt": zod.coerce.date().optional(),
+  "startedAt": zod.coerce.date().optional(),
+  "closedAt": zod.coerce.date(),
+  "lat": zod.number().optional(),
+  "lng": zod.number().optional()
+})
+
+export const CloseVisitStopResponse = zod.object({
+  "id": zod.number(),
+  "userId": zod.number(),
+  "dayPlanId": zod.number(),
+  "visitDate": zod.coerce.date(),
+  "sequence": zod.number().nullable(),
+  "priority": zod.enum(['P1', 'P2', 'P3']),
+  "customerCode": zod.string(),
+  "label": zod.string().nullable(),
+  "inputType": zod.enum(['ADDRESS', 'PIN', 'LATLNG']),
+  "rawInput": zod.string(),
+  "latitude": zod.number(),
+  "longitude": zod.number(),
+  "status": zod.enum(['PENDING', 'EN_ROUTE', 'REACHED', 'COMPLETED', 'SKIPPED']),
+  "plannedArrivalAt": zod.coerce.date().nullish(),
+  "actualArrivalAt": zod.coerce.date().nullish(),
+  "contactName": zod.string().nullish(),
+  "contactPhone": zod.string().nullish(),
+  "reachedAt": zod.coerce.date().nullish(),
+  "startedAt": zod.coerce.date().nullish(),
+  "closedAt": zod.coerce.date().nullish(),
+  "dispositionId": zod.number().nullish(),
+  "notes": zod.string().nullish()
+})
+
+
+/**
+ * @summary Register a push notification token (stub — logs only, no storage)
+ */
+export const RegisterPushTokenBody = zod.object({
+  "userId": zod.number(),
+  "token": zod.string(),
+  "platform": zod.enum(['FCM', 'APNS', 'HMS'])
+})
+
+export const RegisterPushTokenResponse = zod.void()
 
 
 /**

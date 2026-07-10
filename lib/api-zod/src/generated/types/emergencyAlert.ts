@@ -5,13 +5,20 @@
  * FieldForce Live — Admin Panel API
  * OpenAPI spec version: 0.1.0
  */
+import type { EmergencyAlertDirection } from './emergencyAlertDirection';
 
 export interface EmergencyAlert {
   id: number;
   userId: number;
-  triggeredByAdminId: number;
+  /** @nullable */
+  triggeredByAdminId?: number | null;
   message: string;
   triggeredAt: Date;
   /** @nullable */
   acknowledgedAt: Date | null;
+  direction?: EmergencyAlertDirection;
+  /** @nullable */
+  lat?: number | null;
+  /** @nullable */
+  lng?: number | null;
 }

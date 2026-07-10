@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { eq } from "drizzle-orm";
-import { db } from "@workspace/db";
+import { db, updateReturning } from "@workspace/db";
 import { onboardingInvitesTable, usersTable } from "@workspace/db";
 import {
   GetOnboardingByTokenParams,
@@ -48,10 +48,11 @@ router.post("/onboarding/:token/consent", async (req, res): Promise<void> => {
 
   const now = new Date();
   await db.update(onboardingInvitesTable).set({ usedAt: now }).where(eq(onboardingInvitesTable.id, invite.id));
-  const [user] = await db.update(usersTable)
-    .set({ status: "ACTIVE", consentGivenAt: now })
-    .where(eq(usersTable.id, invite.userId))
-    .returning();
+  const user = await updateReturning(
+    usersTable,
+    { status: "ACTIVE", consentGivenAt: now },
+    eq(usersTable.id, invite.userId),
+  );
 
   if (!user) { res.status(404).json({ error: "User not found" }); return; }
 

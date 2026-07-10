@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { LiveStatus } from './liveStatus';
+import type { StoredLiveStatus } from './storedLiveStatus';
 
 export interface LivePosition {
   userId: number;
@@ -15,6 +16,12 @@ export interface LivePosition {
   latitude: number;
   longitude: number;
   status: LiveStatus;
+  liveStatus?: StoredLiveStatus;
+  /** @nullable */
+  liveStatusSince?: Date | null;
+  emergencyActive?: boolean;
+  /** @nullable */
+  currentVisitStopId?: number | null;
   /** @nullable */
   speedKph: number | null;
   recordedAt: Date;

@@ -1,8 +1,8 @@
 import { Router, type IRouter } from "express";
-import { eq, and } from "drizzle-orm";
+import { eq, and, isNull } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { v4 as uuidv4 } from "uuid";
-import { db } from "@workspace/db";
+import { db, insertReturning, updateReturning } from "@workspace/db";
 import {
   usersTable,
   addressesTable,
@@ -87,10 +87,10 @@ router.post("/users", requireAuth, async (req, res): Promise<void> => {
     }
   };
 
-  const [user] = await db
-    .insert(usersTable)
-    .values({ ...userFields, customerId: adminUser.customerId })
-    .returning();
+  const user = await insertReturning(usersTable, {
+    ...userFields,
+    customerId: adminUser.customerId,
+  });
 
   // Insert addresses with stub geocoding
   if (addresses.length > 0) {
@@ -135,16 +135,12 @@ router.post("/users", requireAuth, async (req, res): Promise<void> => {
 
     // Create onboarding invite
     const token = uuidv4();
-    const [invite] = await db
-      .insert(onboardingInvitesTable)
-      .values({
-        userId: user.id,
-        token,
-        channel: "EMAIL",
-        deepLink: `/onboarding/${token}`,
-      })
-      .returning();
-    onboardingInvite = invite;
+    onboardingInvite = await insertReturning(onboardingInvitesTable, {
+      userId: user.id,
+      token,
+      channel: "EMAIL",
+      deepLink: `/onboarding/${token}`,
+    });
   }
 
   res.status(201).json(CreateUserResponse.parse({ user, onboardingInvite }));
@@ -193,11 +189,11 @@ router.patch("/users/:id", requireAuth, async (req, res): Promise<void> => {
   });
   if (!adminUser) { res.status(401).json({ error: "Admin not found" }); return; }
 
-  const [user] = await db
-    .update(usersTable)
-    .set(body.data)
-    .where(and(eq(usersTable.id, params.data.id), eq(usersTable.customerId, adminUser.customerId)))
-    .returning();
+  const user = await updateReturning(
+    usersTable,
+    body.data,
+    and(eq(usersTable.id, params.data.id), eq(usersTable.customerId, adminUser.customerId)),
+  );
 
   if (!user) { res.status(404).json({ error: "User not found" }); return; }
 
@@ -227,10 +223,12 @@ router.get("/users/:id/onboarding-invite", requireAuth, async (req, res): Promis
 
   if (!invite) {
     const token = uuidv4();
-    [invite] = await db
-      .insert(onboardingInvitesTable)
-      .values({ userId: user.id, token, channel: "EMAIL", deepLink: `/onboarding/${token}` })
-      .returning();
+    invite = await insertReturning(onboardingInvitesTable, {
+      userId: user.id,
+      token,
+      channel: "EMAIL",
+      deepLink: `/onboarding/${token}`,
+    });
   }
 
   res.json(GetOnboardingInviteResponse.parse(invite));
@@ -255,15 +253,17 @@ router.post("/users/:id/emergency-alert", requireAuth, async (req, res): Promise
     .where(and(eq(usersTable.id, params.data.id), eq(usersTable.customerId, adminUser.customerId)));
   if (!user) { res.status(404).json({ error: "User not found" }); return; }
 
-  const [alert] = await db
-    .insert(emergencyAlertsTable)
-    .values({
-      userId: user.id,
-      triggeredByAdminId: adminUser.id,
-      message: body.data.message ?? null,
-      acknowledgedAt: null,
-    })
-    .returning();
+  const alert = await insertReturning(emergencyAlertsTable, {
+    userId: user.id,
+    triggeredByAdminId: adminUser.id,
+    direction: "ADMIN_TO_USER",
+    message: body.data.message ?? null,
+    acknowledgedAt: null,
+  });
+
+  // Keep emergencyActive in sync so the live view / alerts panel surfaces admin-initiated
+  // callbacks too, not just user-raised panic alerts.
+  await db.update(usersTable).set({ emergencyActive: true }).where(eq(usersTable.id, user.id));
 
   res.status(201).json(TriggerEmergencyAlertResponse.parse({ ...alert, message: alert.message ?? "" }));
 });
@@ -290,6 +290,47 @@ router.get("/users/:id/alerts", requireAuth, async (req, res): Promise<void> => 
     .where(eq(emergencyAlertsTable.userId, user.id));
 
   res.json(ListUserAlertsResponse.parse(alerts.map(a => ({ ...a, message: a.message ?? "" }))));
+});
+
+// POST /users/:id/alerts/:alertId/acknowledge
+router.post("/users/:id/alerts/:alertId/acknowledge", requireAuth, async (req, res): Promise<void> => {
+  const userId = Number(req.params.id);
+  const alertId = Number(req.params.alertId);
+  if (!Number.isInteger(userId) || !Number.isInteger(alertId)) {
+    res.status(400).json({ error: "Invalid id" });
+    return;
+  }
+
+  const adminUser = await db.query.usersTable.findFirst({
+    where: eq(usersTable.id, req.adminUserId!),
+  });
+  if (!adminUser) { res.status(401).json({ error: "Admin not found" }); return; }
+
+  const [user] = await db
+    .select()
+    .from(usersTable)
+    .where(and(eq(usersTable.id, userId), eq(usersTable.customerId, adminUser.customerId)));
+  if (!user) { res.status(404).json({ error: "User not found" }); return; }
+
+  const alert = await updateReturning(
+    emergencyAlertsTable,
+    { acknowledgedAt: new Date() },
+    and(eq(emergencyAlertsTable.id, alertId), eq(emergencyAlertsTable.userId, userId)),
+  );
+  if (!alert) { res.status(404).json({ error: "Alert not found" }); return; }
+
+  // Clear emergencyActive only if no other unacknowledged alerts remain for this user,
+  // so acknowledging one alert never masks another still-open one.
+  const [remaining] = await db
+    .select()
+    .from(emergencyAlertsTable)
+    .where(and(eq(emergencyAlertsTable.userId, userId), isNull(emergencyAlertsTable.acknowledgedAt)))
+    .limit(1);
+  if (!remaining) {
+    await db.update(usersTable).set({ emergencyActive: false }).where(eq(usersTable.id, userId));
+  }
+
+  res.json({ ...alert, message: alert.message ?? "" });
 });
 
 // GET /users/:id/marked-places
@@ -338,10 +379,13 @@ router.post("/users/:id/marked-places", requireAuth, async (req, res): Promise<v
   req.log.warn("Geocoding is stubbed — using random Delhi NCR coordinates until GOOGLE_MAPS_SERVER_KEY is configured");
   const { lat, lng } = randomDelhiNcrCoord();
 
-  const [place] = await db
-    .insert(markedPlacesTable)
-    .values({ userId: user.id, label: body.data.label, rawAddress: body.data.rawAddress, latitude: lat, longitude: lng })
-    .returning();
+  const place = await insertReturning(markedPlacesTable, {
+    userId: user.id,
+    label: body.data.label,
+    rawAddress: body.data.rawAddress,
+    latitude: lat,
+    longitude: lng,
+  });
 
   res.status(201).json(CreateMarkedPlaceResponse.parse(place));
 });

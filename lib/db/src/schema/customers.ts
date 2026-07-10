@@ -1,11 +1,12 @@
-import { pgTable, text, serial, timestamp } from "drizzle-orm/pg-core";
+import { mysqlTable, text, int, datetime } from "drizzle-orm/mysql-core";
+import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
-export const customersTable = pgTable("customers", {
-  id: serial("id").primaryKey(),
+export const customersTable = mysqlTable("customers", {
+  id: int("id").autoincrement().primaryKey(),
   name: text("name").notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  createdAt: datetime("created_at", { mode: "date", fsp: 3 }).notNull().default(sql`(now(3))`),
 });
 
 export const insertCustomerSchema = createInsertSchema(customersTable).omit({ id: true, createdAt: true });

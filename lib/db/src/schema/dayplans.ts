@@ -1,28 +1,29 @@
-import { pgTable, text, serial, timestamp, integer, doublePrecision, date, pgEnum } from "drizzle-orm/pg-core";
+import { mysqlTable, text, varchar, int, datetime, double, date, mysqlEnum } from "drizzle-orm/mysql-core";
+import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { usersTable } from "./users";
 
-export const dayPlanStatusEnum = pgEnum("day_plan_status", ["DRAFT", "PUBLISHED"]);
-export const visitStopPriorityEnum = pgEnum("visit_stop_priority", ["P1", "P2", "P3"]);
-export const visitStopStatusEnum = pgEnum("visit_stop_status", [
+export const dayPlanStatusValues = ["DRAFT", "PUBLISHED"] as const;
+export const visitStopPriorityValues = ["P1", "P2", "P3"] as const;
+export const visitStopStatusValues = [
   "PENDING",
   "EN_ROUTE",
   "REACHED",
   "COMPLETED",
   "SKIPPED",
-]);
-export const visitStopInputTypeEnum = pgEnum("visit_stop_input_type", ["ADDRESS", "PIN", "LATLNG"]);
+] as const;
+export const visitStopInputTypeValues = ["ADDRESS", "PIN", "LATLNG"] as const;
 
-export const dayPlansTable = pgTable("day_plans", {
-  id: serial("id").primaryKey(),
-  userId: integer("user_id").notNull().references(() => usersTable.id),
+export const dayPlansTable = mysqlTable("day_plans", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("user_id").notNull().references(() => usersTable.id),
   visitDate: date("visit_date", { mode: "string" }).notNull(),
-  status: dayPlanStatusEnum("status").notNull().default("DRAFT"),
-  publishedAt: timestamp("published_at", { withTimezone: true }),
-  totalDistanceMeters: doublePrecision("total_distance_meters").notNull().default(0),
-  totalEtaSeconds: doublePrecision("total_eta_seconds").notNull().default(0),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  status: mysqlEnum("status", dayPlanStatusValues).notNull().default("DRAFT"),
+  publishedAt: datetime("published_at", { mode: "date", fsp: 3 }),
+  totalDistanceMeters: double("total_distance_meters").notNull().default(0),
+  totalEtaSeconds: double("total_eta_seconds").notNull().default(0),
+  createdAt: datetime("created_at", { mode: "date", fsp: 3 }).notNull().default(sql`(now(3))`),
 });
 
 export const insertDayPlanSchema = createInsertSchema(dayPlansTable).omit({
@@ -36,22 +37,29 @@ export const insertDayPlanSchema = createInsertSchema(dayPlansTable).omit({
 export type InsertDayPlan = z.infer<typeof insertDayPlanSchema>;
 export type DayPlanRow = typeof dayPlansTable.$inferSelect;
 
-export const visitStopsTable = pgTable("visit_stops", {
-  id: serial("id").primaryKey(),
-  userId: integer("user_id").notNull().references(() => usersTable.id),
-  dayPlanId: integer("day_plan_id").notNull().references(() => dayPlansTable.id),
+export const visitStopsTable = mysqlTable("visit_stops", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("user_id").notNull().references(() => usersTable.id),
+  dayPlanId: int("day_plan_id").notNull().references(() => dayPlansTable.id),
   visitDate: date("visit_date", { mode: "string" }).notNull(),
-  sequence: integer("sequence"),
-  priority: visitStopPriorityEnum("priority").notNull(),
+  sequence: int("sequence"),
+  priority: mysqlEnum("priority", visitStopPriorityValues).notNull(),
   customerCode: text("customer_code").notNull(),
   label: text("label"),
-  inputType: visitStopInputTypeEnum("input_type").notNull(),
+  inputType: mysqlEnum("input_type", visitStopInputTypeValues).notNull(),
   rawInput: text("raw_input").notNull(),
-  latitude: doublePrecision("latitude").notNull(),
-  longitude: doublePrecision("longitude").notNull(),
-  status: visitStopStatusEnum("status").notNull().default("PENDING"),
-  plannedArrivalAt: timestamp("planned_arrival_at", { withTimezone: true }),
-  actualArrivalAt: timestamp("actual_arrival_at", { withTimezone: true }),
+  latitude: double("latitude").notNull(),
+  longitude: double("longitude").notNull(),
+  status: mysqlEnum("status", visitStopStatusValues).notNull().default("PENDING"),
+  plannedArrivalAt: datetime("planned_arrival_at", { mode: "date", fsp: 3 }),
+  actualArrivalAt: datetime("actual_arrival_at", { mode: "date", fsp: 3 }),
+  contactName: text("contact_name"),
+  contactPhone: text("contact_phone"),
+  reachedAt: datetime("reached_at", { mode: "date", fsp: 3 }),
+  startedAt: datetime("started_at", { mode: "date", fsp: 3 }),
+  closedAt: datetime("closed_at", { mode: "date", fsp: 3 }),
+  dispositionId: int("disposition_id"),
+  notes: text("notes"),
 });
 
 export const insertVisitStopSchema = createInsertSchema(visitStopsTable).omit({
@@ -62,17 +70,22 @@ export const insertVisitStopSchema = createInsertSchema(visitStopsTable).omit({
   actualArrivalAt: true,
   latitude: true,
   longitude: true,
+  reachedAt: true,
+  startedAt: true,
+  closedAt: true,
+  dispositionId: true,
+  notes: true,
 });
 export type InsertVisitStop = z.infer<typeof insertVisitStopSchema>;
 export type VisitStopRow = typeof visitStopsTable.$inferSelect;
 
-export const publicTrackLinksTable = pgTable("public_track_links", {
-  id: serial("id").primaryKey(),
-  visitStopId: integer("visit_stop_id").notNull().references(() => visitStopsTable.id),
-  token: text("token").notNull().unique(),
-  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
-  revokedAt: timestamp("revoked_at", { withTimezone: true }),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+export const publicTrackLinksTable = mysqlTable("public_track_links", {
+  id: int("id").autoincrement().primaryKey(),
+  visitStopId: int("visit_stop_id").notNull().references(() => visitStopsTable.id),
+  token: varchar("token", { length: 64 }).notNull().unique(),
+  expiresAt: datetime("expires_at", { mode: "date", fsp: 3 }).notNull(),
+  revokedAt: datetime("revoked_at", { mode: "date", fsp: 3 }),
+  createdAt: datetime("created_at", { mode: "date", fsp: 3 }).notNull().default(sql`(now(3))`),
 });
 
 export const insertPublicTrackLinkSchema = createInsertSchema(publicTrackLinksTable).omit({

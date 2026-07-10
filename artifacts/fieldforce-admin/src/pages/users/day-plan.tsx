@@ -38,7 +38,9 @@ const stopSchema = z.object({
   customerCode: z.string().min(1, "Required"),
   priority: z.enum(['P1', 'P2', 'P3']),
   rawInput: z.string().min(5, "Full address required"),
-  label: z.string().optional()
+  label: z.string().optional(),
+  contactName: z.string().optional(),
+  contactPhone: z.string().optional()
 });
 
 export default function UserDayPlan({ params }: { params: { id: string } }) {
@@ -186,6 +188,13 @@ export default function UserDayPlan({ params }: { params: { id: string } }) {
                       </div>
                       <p className="text-sm text-muted-foreground">{stop.rawInput}</p>
                       {stop.label && <p className="text-xs text-muted-foreground mt-1">Note: {stop.label}</p>}
+                      {(stop.contactName || stop.contactPhone) && (
+                        <p className="text-xs text-muted-foreground mt-1 font-medium">
+                          {stop.contactName && <span>{stop.contactName}</span>}
+                          {stop.contactName && stop.contactPhone && <span> • </span>}
+                          {stop.contactPhone && <span>{stop.contactPhone}</span>}
+                        </p>
+                      )}
                     </div>
                     
                     <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -274,7 +283,9 @@ function AddStopForm({ userId, date, onSuccess }: { userId: number, date: string
       customerCode: '',
       priority: 'P2',
       rawInput: '',
-      label: ''
+      label: '',
+      contactName: '',
+      contactPhone: ''
     }
   });
 
@@ -286,6 +297,8 @@ function AddStopForm({ userId, date, onSuccess }: { userId: number, date: string
         priority: data.priority as any,
         customerCode: data.customerCode,
         label: data.label,
+        contactName: data.contactName || undefined,
+        contactPhone: data.contactPhone || undefined,
         inputType: 'ADDRESS',
         rawInput: data.rawInput
       }
@@ -326,12 +339,29 @@ function AddStopForm({ userId, date, onSuccess }: { userId: number, date: string
           </FormItem>
         )} />
         <FormField control={form.control} name="label" render={({ field }) => (
-          <FormItem>
-            <FormLabel>Notes (Optional)</FormLabel>
-            <FormControl><Input {...field} placeholder="Ask for John at reception" /></FormControl>
+          <FormItem className="col-span-2">
+            <FormLabel>Location Label / Note</FormLabel>
+            <FormControl><Input placeholder="e.g. Back entrance, Warehouse 2" {...field} /></FormControl>
+            <FormMessage />
           </FormItem>
         )} />
-        <Button type="submit" className="w-full" disabled={createStop.isPending}>
+        <div className="grid grid-cols-2 gap-4">
+          <FormField control={form.control} name="contactName" render={({ field }) => (
+            <FormItem>
+              <FormLabel>Contact Name (Optional)</FormLabel>
+              <FormControl><Input placeholder="e.g. John Doe" {...field} /></FormControl>
+              <FormMessage />
+            </FormItem>
+          )} />
+          <FormField control={form.control} name="contactPhone" render={({ field }) => (
+            <FormItem>
+              <FormLabel>Contact Phone (Optional)</FormLabel>
+              <FormControl><Input placeholder="e.g. +1 555 1234" {...field} /></FormControl>
+              <FormMessage />
+            </FormItem>
+          )} />
+        </div>
+        <Button type="submit" disabled={createStop.isPending} className="w-full">
           {createStop.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
           Add to Plan
         </Button>

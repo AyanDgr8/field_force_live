@@ -9,6 +9,10 @@ import publicRouter from "./public";
 import onboardingRouter from "./onboarding";
 import ingestRouter from "./ingest";
 import simulatorRouter from "./simulator";
+import dispositionsRouter from "./dispositions";
+import configRouter from "./config";
+import mobileAuthRouter from "./mobileAuth";
+import mobileStatusRouter from "./mobileStatus";
 
 const router: IRouter = Router();
 
@@ -22,5 +26,9 @@ router.use(publicRouter);
 router.use(onboardingRouter);
 router.use(ingestRouter);
 router.use(simulatorRouter);
+router.use(dispositionsRouter);
+router.use(configRouter);
+router.use(mobileAuthRouter);
+router.use(mobileStatusRouter);
 
 export default router;

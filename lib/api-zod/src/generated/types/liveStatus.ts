@@ -13,4 +13,6 @@ export const LiveStatus = {
   MOVING: 'MOVING',
   STATIONARY: 'STATIONARY',
   OFFLINE: 'OFFLINE',
+  ON_SHIFT_IDLE: 'ON_SHIFT_IDLE',
+  BUSY: 'BUSY',
 } as const;

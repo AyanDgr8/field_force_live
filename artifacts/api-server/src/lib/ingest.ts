@@ -2,7 +2,7 @@
  * Shared ingest logic used by both /ingest/location route and the simulator.
  * Centralised here so no logic is duplicated.
  */
-import { db } from "@workspace/db";
+import { db, insertManyReturning } from "@workspace/db";
 import {
   locationPingsTable,
   dwellSegmentsTable,
@@ -25,20 +25,18 @@ export interface PingInput {
 export async function ingestPings(pings: PingInput[]) {
   if (pings.length === 0) return [];
 
-  const inserted = await db
-    .insert(locationPingsTable)
-    .values(
-      pings.map((p) => ({
-        userId: p.userId,
-        latitude: p.latitude,
-        longitude: p.longitude,
-        speedKph: p.speedKph ?? null,
-        accuracyM: p.accuracyM ?? null,
-        batteryLevel: p.batteryLevel ?? null,
-        recordedAt: p.recordedAt,
-      })),
-    )
-    .returning();
+  const inserted = await insertManyReturning(
+    locationPingsTable,
+    pings.map((p) => ({
+      userId: p.userId,
+      latitude: p.latitude,
+      longitude: p.longitude,
+      speedKph: p.speedKph ?? null,
+      accuracyM: p.accuracyM ?? null,
+      batteryLevel: p.batteryLevel ?? null,
+      recordedAt: p.recordedAt,
+    })),
+  );
 
   // Dwell detection: group by userId and check per-user
   const byUser = new Map<number, PingInput[]>();

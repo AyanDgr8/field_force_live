@@ -7,8 +7,12 @@ import {
   useGetUserPlacesCalendar,
   useListUserAlerts,
   useTriggerEmergencyAlert,
-  useGetOnboardingInvite
+  useGetOnboardingInvite,
+  useGetUserDayPlan,
+  useListDispositions,
+  useGetLivePositions
 } from '@workspace/api-client-react';
+import { LiveStatusBadge } from '@/components/ui/live-status-badge';
 import { format } from 'date-fns';
 import { 
   ArrowLeft, Map as MapIcon, Calendar, Activity, 
@@ -26,6 +30,10 @@ export default function UserDetail({ params }: { params: { id: string } }) {
   const userId = parseInt(params.id);
   const { data: user, isLoading } = useGetUser(userId);
   const [selectedDate, setSelectedDate] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
+  const { data: dayPlan } = useGetUserDayPlan({ userId, date: selectedDate });
+  const { data: dispositions } = useListDispositions();
+  const { data: livePositions } = useGetLivePositions();
+  const livePos = livePositions?.find(p => p.userId === userId);
 
   if (isLoading) return <div className="p-8 text-center"><Loader2 className="w-6 h-6 animate-spin mx-auto text-muted-foreground" /></div>;
   if (!user) return <div className="p-8 text-center">User not found</div>;
@@ -51,6 +59,7 @@ export default function UserDetail({ params }: { params: { id: string } }) {
               ) : (
                 <Badge variant="outline" className="border-slate-200 text-slate-700 bg-slate-50">{user.status}</Badge>
               )}
+              {livePos && <LiveStatusBadge pos={livePos} />}
             </div>
             <p className="text-sm text-muted-foreground mt-1 font-mono">{user.employeeCode}</p>
           </div>
@@ -85,6 +94,51 @@ export default function UserDetail({ params }: { params: { id: string } }) {
               {user.status === 'INVITED' && user.role === 'USER' && (
                 <div className="pt-2">
                   <InviteLinkCard userId={userId} />
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-3 border-b">
+              <CardTitle className="text-base flex items-center justify-between">
+                <span>Day Plan & Visits</span>
+                {dayPlan && (
+                  <Badge variant="secondary">
+                    {dayPlan.stops.filter(s => s.status === 'COMPLETED').length} / {dayPlan.stops.length}
+                  </Badge>
+                )}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="pt-4 space-y-4">
+              {!dayPlan || dayPlan.stops.length === 0 ? (
+                <div className="text-sm text-muted-foreground">No visits scheduled for this date.</div>
+              ) : (
+                <div className="space-y-3">
+                  {dayPlan.stops.filter(s => s.status === 'COMPLETED').map(stop => {
+                    const disp = dispositions?.find(d => d.id === stop.dispositionId);
+                    return (
+                      <div key={stop.id} className="border rounded-md p-3 text-sm space-y-2">
+                        <div className="flex justify-between items-start">
+                          <span className="font-semibold">{stop.customerCode}</span>
+                          {disp && <Badge variant="outline" className="text-[10px]">{disp.label}</Badge>}
+                        </div>
+                        <div className="grid grid-cols-3 gap-2 text-[11px] text-muted-foreground">
+                          <div><span className="block font-medium text-foreground">Reached</span> {stop.reachedAt ? format(new Date(stop.reachedAt), 'HH:mm') : '-'}</div>
+                          <div><span className="block font-medium text-foreground">Started</span> {stop.startedAt ? format(new Date(stop.startedAt), 'HH:mm') : '-'}</div>
+                          <div><span className="block font-medium text-foreground">Closed</span> {stop.closedAt ? format(new Date(stop.closedAt), 'HH:mm') : '-'}</div>
+                        </div>
+                        {stop.notes && (
+                          <div className="text-xs mt-2 bg-muted p-2 rounded truncate" title={stop.notes}>
+                            📝 {stop.notes}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                  {dayPlan.stops.filter(s => s.status === 'COMPLETED').length === 0 && (
+                    <div className="text-sm text-muted-foreground">No completed visits yet.</div>
+                  )}
                 </div>
               )}
             </CardContent>

@@ -17,6 +17,7 @@ import {
   GetMeResponse,
 } from "@workspace/api-zod";
 import { signJwt, verifyJwt } from "../middlewares/auth.js";
+import { sendLoginOtpEmail } from "../lib/mailer.js";
 
 const router: IRouter = Router();
 
@@ -82,7 +83,17 @@ router.post("/auth/login", async (req, res): Promise<void> => {
     consumedAt: null,
   });
 
-  req.log.info({ otp: code, userId: user.id }, "OTP code for login");
+  try {
+    await sendLoginOtpEmail({
+      to: user.email,
+      code,
+      recipientName: user.firstName,
+    });
+  } catch (error) {
+    req.log.error({ err: error, userId: user.id }, "Failed to send login OTP email");
+    res.status(502).json({ error: "Unable to send verification email. Please try again." });
+    return;
+  }
 
   const data = LoginResponse.parse({
     loginToken,

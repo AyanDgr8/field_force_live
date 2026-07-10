@@ -89,6 +89,26 @@ export const LiveStatus = {
   MOVING: 'MOVING',
   STATIONARY: 'STATIONARY',
   OFFLINE: 'OFFLINE',
+  ON_SHIFT_IDLE: 'ON_SHIFT_IDLE',
+  BUSY: 'BUSY',
+} as const;
+
+export type StoredLiveStatus = typeof StoredLiveStatus[keyof typeof StoredLiveStatus];
+
+
+export const StoredLiveStatus = {
+  OFFLINE: 'OFFLINE',
+  ON_SHIFT_IDLE: 'ON_SHIFT_IDLE',
+  BUSY: 'BUSY',
+} as const;
+
+export type PushPlatform = typeof PushPlatform[keyof typeof PushPlatform];
+
+
+export const PushPlatform = {
+  FCM: 'FCM',
+  APNS: 'APNS',
+  HMS: 'HMS',
 } as const;
 
 export type OnboardingChannel = typeof OnboardingChannel[keyof typeof OnboardingChannel];
@@ -201,6 +221,7 @@ export interface UserInput {
   phoneNumber: string;
   /** @minLength 1 */
   email: string;
+  username?: string;
   role: UserRole;
   addresses: AddressInput[];
   markedPlaces?: MarkedPlaceInput[];
@@ -247,14 +268,28 @@ export interface EmergencyAlertInput {
   message?: string;
 }
 
+export type EmergencyAlertDirection = typeof EmergencyAlertDirection[keyof typeof EmergencyAlertDirection];
+
+
+export const EmergencyAlertDirection = {
+  ADMIN_TO_USER: 'ADMIN_TO_USER',
+  USER_TO_ADMIN: 'USER_TO_ADMIN',
+} as const;
+
 export interface EmergencyAlert {
   id: number;
   userId: number;
-  triggeredByAdminId: number;
+  /** @nullable */
+  triggeredByAdminId?: number | null;
   message: string;
   triggeredAt: string;
   /** @nullable */
   acknowledgedAt: string | null;
+  direction?: EmergencyAlertDirection;
+  /** @nullable */
+  lat?: number | null;
+  /** @nullable */
+  lng?: number | null;
 }
 
 export interface LiveSummary {
@@ -273,6 +308,12 @@ export interface LivePosition {
   latitude: number;
   longitude: number;
   status: LiveStatus;
+  liveStatus?: StoredLiveStatus;
+  /** @nullable */
+  liveStatusSince?: string | null;
+  emergencyActive?: boolean;
+  /** @nullable */
+  currentVisitStopId?: number | null;
   /** @nullable */
   speedKph: number | null;
   recordedAt: string;
@@ -378,6 +419,20 @@ export interface VisitStop {
   plannedArrivalAt?: string | null;
   /** @nullable */
   actualArrivalAt?: string | null;
+  /** @nullable */
+  contactName?: string | null;
+  /** @nullable */
+  contactPhone?: string | null;
+  /** @nullable */
+  reachedAt?: string | null;
+  /** @nullable */
+  startedAt?: string | null;
+  /** @nullable */
+  closedAt?: string | null;
+  /** @nullable */
+  dispositionId?: number | null;
+  /** @nullable */
+  notes?: string | null;
 }
 
 export interface VisitStopInput {
@@ -389,6 +444,8 @@ export interface VisitStopInput {
   inputType: VisitStopInputType;
   /** @minLength 1 */
   rawInput: string;
+  contactName?: string;
+  contactPhone?: string;
 }
 
 export interface VisitStopUpdate {
@@ -468,6 +525,126 @@ export interface SimulatorToggleInput {
   running: boolean;
 }
 
+export interface Disposition {
+  id: number;
+  customerId: number;
+  label: string;
+  active: boolean;
+  sortOrder: number;
+}
+
+export interface DispositionInput {
+  /** @minLength 1 */
+  label: string;
+  active?: boolean;
+  sortOrder?: number;
+}
+
+export interface DispositionUpdate {
+  /** @minLength 1 */
+  label?: string;
+  active?: boolean;
+  sortOrder?: number;
+}
+
+export interface AttendanceRecord {
+  date: string;
+  loginAt: string;
+  loginLat: number;
+  loginLng: number;
+  /** @nullable */
+  logoutAt?: string | null;
+  /** @nullable */
+  logoutLat?: number | null;
+  /** @nullable */
+  logoutLng?: number | null;
+  /** @nullable */
+  totalHours?: number | null;
+}
+
+export interface MobileLoginInput {
+  identifier: string;
+  password: string;
+}
+
+export interface MobileOtpRequestInput {
+  identifier: string;
+}
+
+export interface MobileUser {
+  id: number;
+  firstName: string;
+  lastName: string;
+  email: string;
+  employeeCode: string;
+  customerId: number;
+  role: UserRole;
+}
+
+export interface MobileAuthSession {
+  deviceToken: string;
+  user: MobileUser;
+}
+
+export type UserStatusInputStatus = typeof UserStatusInputStatus[keyof typeof UserStatusInputStatus];
+
+
+export const UserStatusInputStatus = {
+  IDLE: 'IDLE',
+  BUSY: 'BUSY',
+} as const;
+
+export interface UserStatusInput {
+  userId: number;
+  status: UserStatusInputStatus;
+  visitStopId?: number;
+  lat: number;
+  lng: number;
+  at: string;
+}
+
+export type UserStatusResultStatus = typeof UserStatusResultStatus[keyof typeof UserStatusResultStatus];
+
+
+export const UserStatusResultStatus = {
+  IDLE: 'IDLE',
+  BUSY: 'BUSY',
+} as const;
+
+export interface UserStatusResult {
+  userId: number;
+  status: UserStatusResultStatus;
+}
+
+export interface UserEmergencyInput {
+  userId: number;
+  active: boolean;
+  lat: number;
+  lng: number;
+}
+
+export interface UserEmergencyResult {
+  userId: number;
+  emergencyActive: boolean;
+}
+
+export interface CloseVisitStopInput {
+  dispositionId: number;
+  /** @maxLength 250 */
+  notes?: string;
+  reachedAt?: string;
+  startedAt?: string;
+  closedAt: string;
+  lat?: number;
+  lng?: number;
+}
+
+export interface PushTokenInput {
+  userId: number;
+  token: string;
+  platform: PushPlatform;
+}
+
 export type ListUsersParams = {
 role?: UserRole;
 status?: UserStatus;
@@ -497,5 +674,15 @@ date: string;
 export type GetMobileDayPlanParams = {
 userId: number;
 date: string;
+};
+
+export type GetConfigDispositionsParams = {
+customerId: number;
+};
+
+export type GetUserAttendanceReportParams = {
+userId: number;
+from?: string;
+to?: string;
 };
 

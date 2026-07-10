@@ -1,18 +1,19 @@
-import { pgTable, text, serial, timestamp, integer, pgEnum } from "drizzle-orm/pg-core";
+import { mysqlTable, text, varchar, int, datetime, mysqlEnum } from "drizzle-orm/mysql-core";
+import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { usersTable } from "./users";
 
-export const onboardingChannelEnum = pgEnum("onboarding_channel", ["WHATSAPP", "EMAIL"]);
+export const onboardingChannelValues = ["WHATSAPP", "EMAIL"] as const;
 
-export const onboardingInvitesTable = pgTable("onboarding_invites", {
-  id: serial("id").primaryKey(),
-  userId: integer("user_id").notNull().references(() => usersTable.id).unique(),
-  token: text("token").notNull().unique(),
-  channel: onboardingChannelEnum("channel").notNull(),
+export const onboardingInvitesTable = mysqlTable("onboarding_invites", {
+  id: int("id").autoincrement().primaryKey(),
+  userId: int("user_id").notNull().references(() => usersTable.id).unique(),
+  token: varchar("token", { length: 64 }).notNull().unique(),
+  channel: mysqlEnum("channel", onboardingChannelValues).notNull(),
   deepLink: text("deep_link").notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-  usedAt: timestamp("used_at", { withTimezone: true }),
+  createdAt: datetime("created_at", { mode: "date", fsp: 3 }).notNull().default(sql`(now(3))`),
+  usedAt: datetime("used_at", { mode: "date", fsp: 3 }),
 });
 
 export const insertOnboardingInviteSchema = createInsertSchema(onboardingInvitesTable).omit({

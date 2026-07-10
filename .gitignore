@@ -37,6 +37,10 @@ yarn-error.log
 testem.log
 /typings
 
+# local secrets (DATABASE_URL, SESSION_SECRET) — see .env.example
+.env
+.env.local
+
 # System Files
 .DS_Store
 Thumbs.db

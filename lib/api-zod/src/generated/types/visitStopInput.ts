@@ -17,4 +17,6 @@ export interface VisitStopInput {
   inputType: VisitStopInputType;
   /** @minLength 1 */
   rawInput: string;
+  contactName?: string;
+  contactPhone?: string;
 }

@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { eq, and, asc, isNull } from "drizzle-orm";
-import { db } from "@workspace/db";
+import { db, insertReturning, updateReturning } from "@workspace/db";
 import {
   usersTable,
   addressesTable,
@@ -41,8 +41,7 @@ async function findOrCreateDayPlan(userId: number, dateStr: string) {
   const [existing] = await db.select().from(dayPlansTable)
     .where(and(eq(dayPlansTable.userId, userId), eq(dayPlansTable.visitDate, dateStr)));
   if (existing) return existing;
-  const [created] = await db.insert(dayPlansTable).values({ userId, visitDate: dateStr }).returning();
-  return created;
+  return insertReturning(dayPlansTable, { userId, visitDate: dateStr });
 }
 
 async function getDayPlanDetail(planId: number) {
@@ -96,7 +95,7 @@ router.post("/users/:id/visit-stops", requireAuth, async (req, res): Promise<voi
   req.log.warn("Geocoding is stubbed — using random Delhi NCR coordinates until GOOGLE_MAPS_SERVER_KEY is configured");
   const { lat, lng } = randomDelhiNcrCoord();
 
-  const [stop] = await db.insert(visitStopsTable).values({
+  const stop = await insertReturning(visitStopsTable, {
     userId: user.id,
     dayPlanId: plan.id,
     visitDate,
@@ -107,7 +106,9 @@ router.post("/users/:id/visit-stops", requireAuth, async (req, res): Promise<voi
     rawInput: body.data.rawInput,
     latitude: lat,
     longitude: lng,
-  }).returning();
+    contactName: body.data.contactName ?? null,
+    contactPhone: body.data.contactPhone ?? null,
+  });
 
   res.status(201).json(CreateVisitStopResponse.parse(stop));
 });
@@ -131,8 +132,11 @@ router.patch("/visit-stops/:stopId", requireAuth, async (req, res): Promise<void
     .where(and(eq(usersTable.id, stop.userId), eq(usersTable.customerId, customerId)));
   if (!owner) { res.status(403).json({ error: "Forbidden" }); return; }
 
-  const [updated] = await db.update(visitStopsTable).set(body.data)
-    .where(eq(visitStopsTable.id, params.data.stopId)).returning();
+  const updated = await updateReturning(
+    visitStopsTable,
+    body.data,
+    eq(visitStopsTable.id, params.data.stopId),
+  );
 
   res.json(UpdateVisitStopResponse.parse(updated));
 });
@@ -289,11 +293,11 @@ router.post("/visit-stops/:stopId/track-link", requireAuth, async (req, res): Pr
 
   const token = uuidv4();
   const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
-  const [link] = await db.insert(publicTrackLinksTable).values({
+  const link = await insertReturning(publicTrackLinksTable, {
     visitStopId: stop.id,
     token,
     expiresAt,
-  }).returning();
+  });
 
   res.status(201).json(CreateTrackLinkResponse.parse({
     token: link.token,

@@ -22,15 +22,22 @@ import {
 import { requireAuth } from "../middlewares/auth.js";
 import { haversineMeters, estimateTravelTime } from "../lib/geo.js";
 import { isNull } from "drizzle-orm";
-import { sql } from "drizzle-orm";
+import { count } from "drizzle-orm";
+import { emergencyAlertsTable } from "@workspace/db";
 
 const router: IRouter = Router();
 
-function deriveStatus(ping: { speedKph: number | null; recordedAt: Date }): "MOVING" | "STATIONARY" | "OFFLINE" {
+function deriveStatus(
+  ping: { speedKph: number | null; recordedAt: Date },
+  user: { liveStatus: "OFFLINE" | "ON_SHIFT_IDLE" | "BUSY" },
+): "MOVING" | "STATIONARY" | "OFFLINE" | "ON_SHIFT_IDLE" | "BUSY" {
   const ageMs = Date.now() - ping.recordedAt.getTime();
   const within2min = ageMs <= 2 * 60 * 1000;
   if (!within2min) return "OFFLINE";
   if ((ping.speedKph ?? 0) > 3) return "MOVING";
+  // Fall back to stored liveStatus for BUSY/IDLE, otherwise STATIONARY
+  if (user.liveStatus === "BUSY") return "BUSY";
+  if (user.liveStatus === "ON_SHIFT_IDLE") return "ON_SHIFT_IDLE";
   return "STATIONARY";
 }
 
@@ -44,7 +51,7 @@ router.get("/live/summary", requireAuth, async (req, res): Promise<void> => {
   const customerId = await getAdminCustomerId(req.adminUserId!);
   if (!customerId) { res.status(401).json({ error: "Admin not found" }); return; }
 
-  const users = await db.select({ id: usersTable.id }).from(usersTable)
+  const users = await db.select({ id: usersTable.id, liveStatus: usersTable.liveStatus }).from(usersTable)
     .where(and(eq(usersTable.customerId, customerId), eq(usersTable.status, "ACTIVE")));
 
   let movingCount = 0, stationaryCount = 0, offlineCount = 0;
@@ -54,19 +61,19 @@ router.get("/live/summary", requireAuth, async (req, res): Promise<void> => {
       .where(eq(locationPingsTable.userId, u.id))
       .orderBy(desc(locationPingsTable.recordedAt)).limit(1);
     if (!ping) { offlineCount++; continue; }
-    const st = deriveStatus(ping);
+    const st = deriveStatus(ping, u);
     if (st === "MOVING") movingCount++;
-    else if (st === "STATIONARY") stationaryCount++;
+    else if (st === "STATIONARY" || st === "ON_SHIFT_IDLE" || st === "BUSY") stationaryCount++;
     else offlineCount++;
   }
 
   // Alert count: count emergency alerts not acknowledged
-  const alerts = await db.execute(
-    sql`SELECT count(*)::int as cnt FROM emergency_alerts ea
-        JOIN users u ON u.id = ea.user_id
-        WHERE u.customer_id = ${customerId} AND ea.acknowledged_at IS NULL`
-  );
-  const alertCount = (alerts.rows[0] as { cnt: number }).cnt ?? 0;
+  const [alerts] = await db
+    .select({ cnt: count() })
+    .from(emergencyAlertsTable)
+    .innerJoin(usersTable, eq(usersTable.id, emergencyAlertsTable.userId))
+    .where(and(eq(usersTable.customerId, customerId), isNull(emergencyAlertsTable.acknowledgedAt)));
+  const alertCount = alerts?.cnt ?? 0;
 
   res.json(GetLiveSummaryResponse.parse({
     activeCount: movingCount + stationaryCount,
@@ -99,7 +106,11 @@ router.get("/live/positions", requireAuth, async (req, res): Promise<void> => {
       employeeCode: u.employeeCode,
       latitude: ping.latitude,
       longitude: ping.longitude,
-      status: deriveStatus(ping),
+      status: deriveStatus(ping, u),
+      liveStatus: u.liveStatus,
+      liveStatusSince: u.liveStatusSince ?? null,
+      emergencyActive: u.emergencyActive,
+      currentVisitStopId: u.currentVisitStopId ?? null,
       speedKph: ping.speedKph ?? null,
       recordedAt: ping.recordedAt,
     });

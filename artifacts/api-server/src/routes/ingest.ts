@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { eq, and, isNull, desc } from "drizzle-orm";
-import { db } from "@workspace/db";
+import { db, insertReturning, updateReturning } from "@workspace/db";
 import { sessionsTable, dayPlansTable, visitStopsTable } from "@workspace/db";
 import {
   IngestLocationBody,
@@ -42,7 +42,7 @@ router.post("/ingest/session", async (req, res): Promise<void> => {
   const { userId, event, latitude, longitude, at } = parsed.data;
 
   if (event === "LOGIN") {
-    const [session] = await db.insert(sessionsTable).values({
+    const session = await insertReturning(sessionsTable, {
       userId,
       loginAt: at,
       loginLat: latitude,
@@ -50,7 +50,7 @@ router.post("/ingest/session", async (req, res): Promise<void> => {
       logoutAt: null,
       logoutLat: null,
       logoutLng: null,
-    }).returning();
+    });
     res.status(201).json(IngestSessionResponse.parse(session));
   } else {
     // LOGOUT: find most recent open session
@@ -61,10 +61,11 @@ router.post("/ingest/session", async (req, res): Promise<void> => {
 
     if (!open) { res.status(404).json({ error: "No open session found" }); return; }
 
-    const [session] = await db.update(sessionsTable)
-      .set({ logoutAt: at, logoutLat: latitude, logoutLng: longitude })
-      .where(eq(sessionsTable.id, open.id))
-      .returning();
+    const session = await updateReturning(
+      sessionsTable,
+      { logoutAt: at, logoutLat: latitude, logoutLng: longitude },
+      eq(sessionsTable.id, open.id),
+    );
 
     res.json(IngestSessionResponse.parse(session));
   }
