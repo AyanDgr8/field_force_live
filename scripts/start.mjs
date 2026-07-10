@@ -40,6 +40,7 @@ function stop(signal = "SIGTERM") {
 
 const api = run("@workspace/api-server", {
   PORT: apiPort,
+  APP_ROOT: process.cwd(),
 });
 
 const frontend = run("@workspace/fieldforce-admin", {

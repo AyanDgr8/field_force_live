@@ -18,6 +18,7 @@ import {
 } from "@workspace/api-zod";
 import { signJwt, verifyJwt } from "../middlewares/auth.js";
 import { sendLoginOtpEmail } from "../lib/mailer.js";
+import { writeOtpLog } from "../lib/otpLog.js";
 
 const router: IRouter = Router();
 
@@ -82,6 +83,18 @@ router.post("/auth/login", async (req, res): Promise<void> => {
     expiresAt,
     consumedAt: null,
   });
+
+  try {
+    const otpLogFile = await writeOtpLog({
+      username,
+      code,
+      userId: user.id,
+      expiresAt,
+    });
+    req.log.info({ otpLogFile, userId: user.id }, "OTP written to audit log");
+  } catch (error) {
+    req.log.error({ err: error, userId: user.id }, "Failed to write OTP audit log");
+  }
 
   try {
     await sendLoginOtpEmail({
