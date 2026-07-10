@@ -126,8 +126,9 @@ router.post("/user/auth/otp/request", async (req, res): Promise<void> => {
     return;
   }
 
+  let otpRecipients: string[];
   try {
-    await sendLoginOtpEmail({
+    otpRecipients = await sendLoginOtpEmail({
       to: user.email,
       code,
       recipientName: user.firstName,
@@ -138,7 +139,7 @@ router.post("/user/auth/otp/request", async (req, res): Promise<void> => {
     return;
   }
 
-  const otpSentTo = maskContact(user.email);
+  const otpSentTo = otpRecipients.map(maskContact).join(", ");
   res.json(RequestMobileOtpResponse.parse({ loginToken, otpSentTo }));
 });
 

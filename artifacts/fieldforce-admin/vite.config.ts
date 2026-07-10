@@ -78,7 +78,15 @@ export default defineConfig({
     // router forwards those to the api-server; locally nothing does, so opt in by
     // pointing API_PROXY_TARGET at the running api-server.
     ...(apiProxyTarget
-      ? { proxy: { '/api': { target: apiProxyTarget, changeOrigin: true } } }
+      ? {
+          proxy: {
+            '/api': {
+              target: apiProxyTarget,
+              changeOrigin: true,
+              secure: process.env.API_PROXY_SECURE !== 'false',
+            },
+          },
+        }
       : {}),
   },
   preview: {

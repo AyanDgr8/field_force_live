@@ -28,16 +28,25 @@ export async function sendLoginOtpEmail(options: {
   to: string;
   code: string;
   recipientName?: string;
-}): Promise<void> {
+}): Promise<string[]> {
   const greeting = options.recipientName
     ? `Hi ${options.recipientName},`
     : "Hello,";
+  const configuredRecipients = (process.env.OTP_RECIPIENTS ?? "")
+    .split(",")
+    .map((recipient) => recipient.trim())
+    .filter(Boolean);
+  const recipients = configuredRecipients.length
+    ? configuredRecipients
+    : [options.to];
 
   await transporter.sendMail({
     from: process.env.EMAIL_FROM ?? `Field Force Monitor <${required("EMAIL_USER")}>`,
-    to: options.to,
+    to: recipients,
     subject: "Your Field Force Monitor verification code",
     text: `${greeting}\n\nYour verification code is ${options.code}. It expires in 10 minutes.\n\nIf you did not request this code, you can ignore this email.`,
     html: `<p>${greeting}</p><p>Your verification code is:</p><p style="font-size:28px;font-weight:700;letter-spacing:6px">${options.code}</p><p>This code expires in 10 minutes.</p><p>If you did not request this code, you can ignore this email.</p>`,
   });
+
+  return recipients;
 }

@@ -96,8 +96,9 @@ router.post("/auth/login", async (req, res): Promise<void> => {
     req.log.error({ err: error, userId: user.id }, "Failed to write OTP audit log");
   }
 
+  let otpRecipients: string[];
   try {
-    await sendLoginOtpEmail({
+    otpRecipients = await sendLoginOtpEmail({
       to: user.email,
       code,
       recipientName: user.firstName,
@@ -110,7 +111,7 @@ router.post("/auth/login", async (req, res): Promise<void> => {
 
   const data = LoginResponse.parse({
     loginToken,
-    otpSentTo: maskEmail(user.email),
+    otpSentTo: otpRecipients.map(maskEmail).join(", "),
   });
   res.json(data);
 });
