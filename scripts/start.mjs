@@ -22,8 +22,9 @@ const apiProtocol = process.env.USE_HTTPS === "true" ? "https" : "http";
 const children = [];
 let stopping = false;
 
-function run(filter, env) {
-  const child = spawn("pnpm", ["--filter", filter, "run", "dev"], {
+function run(packageDirectory, env) {
+  const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
+  const child = spawn(npmCommand, ["--prefix", packageDirectory, "run", "dev"], {
     stdio: "inherit",
     env: { ...process.env, ...env },
   });
@@ -39,12 +40,12 @@ function stop(signal = "SIGTERM") {
   }
 }
 
-const api = run("@workspace/api-server", {
+const api = run("artifacts/api-server", {
   PORT: apiPort,
   APP_ROOT: process.cwd(),
 });
 
-const frontend = run("@workspace/fieldforce-admin", {
+const frontend = run("artifacts/fieldforce-admin", {
   PORT: frontendPort,
   BASE_PATH: process.env.BASE_PATH ?? "/",
   API_PROXY_TARGET:
