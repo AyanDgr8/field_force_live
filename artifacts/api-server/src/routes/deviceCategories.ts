@@ -10,7 +10,7 @@ import { eq, and } from "drizzle-orm";
 import { db, insertReturning, updateReturning } from "@workspace/db";
 import { deviceCategoriesTable, usersTable } from "@workspace/db";
 import { requireAuth } from "../middlewares/auth.js";
-import { z } from "zod/v4";
+import { z } from "zod";
 
 const router: IRouter = Router();
 

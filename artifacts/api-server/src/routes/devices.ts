@@ -15,7 +15,7 @@ import {
   usersTable, locationPingsTable, vendorAccountsTable,
 } from "@workspace/db";
 import { requireAuth } from "../middlewares/auth.js";
-import { z } from "zod/v4";
+import { z } from "zod";
 
 const router: IRouter = Router();
 

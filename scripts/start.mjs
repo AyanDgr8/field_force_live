@@ -26,6 +26,9 @@ function run(packageDirectory, env) {
   const child = spawn(npmCommand, ["--prefix", packageDirectory, "run", "dev"], {
     stdio: "inherit",
     env: { ...process.env, ...env },
+    // Give each service its own process group so PM2/restart cleanup also
+    // terminates grandchildren such as Vite and the built API process.
+    detached: process.platform !== "win32",
   });
   children.push(child);
   return child;
@@ -35,7 +38,15 @@ function stop(signal = "SIGTERM") {
   if (stopping) return;
   stopping = true;
   for (const child of children) {
-    if (child.exitCode === null && child.signalCode === null) child.kill(signal);
+    if (child.exitCode !== null || child.signalCode !== null) continue;
+    if (process.platform === "win32") child.kill(signal);
+    else {
+      try {
+        process.kill(-child.pid, signal);
+      } catch {
+        child.kill(signal);
+      }
+    }
   }
 }
 

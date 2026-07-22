@@ -22,7 +22,7 @@ import { encrypt, decrypt } from "../lib/crypto.js";
 import { boltConnector } from "../lib/gps/boltConnector.js";
 import { mockBoltConnector } from "../lib/gps/mockBoltConnector.js";
 import { scheduleAccountPoller } from "../lib/devicePoller.js";
-import { z } from "zod/v4";
+import { z } from "zod";
 
 const router: IRouter = Router();
 
