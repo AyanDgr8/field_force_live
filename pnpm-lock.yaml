@@ -222,7 +222,7 @@ importers:
         specifier: ^14.0.1
         version: 14.0.1
       zod:
-        specifier: 'catalog:'
+        specifier: ^3.25.76
         version: 3.25.76
     devDependencies:
       '@types/bcryptjs':
