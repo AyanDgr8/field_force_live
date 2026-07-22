@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { useLocation, Link } from 'wouter';
 import { useGetMe, useLogout } from '@workspace/api-client-react';
-import { Loader2, Map, Users, AlertTriangle, Settings, LogOut, Activity, CalendarDays } from 'lucide-react';
+import { Loader2, Map, Users, AlertTriangle, Settings, LogOut, Activity, CalendarDays, Cpu, Link2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 
@@ -40,10 +40,15 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         </div>
 
         <div className="flex-1 overflow-y-auto py-4 flex flex-col gap-1 px-3">
+          <p className="px-3 text-[10px] font-semibold uppercase tracking-widest text-sidebar-foreground/40 mb-1 mt-1">Operations</p>
           <NavItem href="/" icon={<Map className="w-5 h-5" />} label="Live Map" />
           <NavItem href="/users" icon={<Users className="w-5 h-5" />} label="Fleet & Users" />
           <NavItem href="/attendance" icon={<CalendarDays className="w-5 h-5" />} label="Attendance" />
           <NavItem href="/alerts" icon={<AlertTriangle className="w-5 h-5" />} label="Alerts" />
+
+          <p className="px-3 text-[10px] font-semibold uppercase tracking-widest text-sidebar-foreground/40 mb-1 mt-3">GPS Devices</p>
+          <NavItem href="/devices" icon={<Cpu className="w-5 h-5" />} label="Tracked Devices" />
+          <NavItem href="/vendor-accounts" icon={<Link2 className="w-5 h-5" />} label="Vendor Accounts" />
         </div>
 
         <div className="p-4 border-t border-sidebar-border space-y-2">
@@ -52,8 +57,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             <span className="text-xs text-sidebar-foreground/60 truncate">{user.customerName}</span>
           </div>
           <NavItem href="/settings" icon={<Settings className="w-5 h-5" />} label="Settings" />
-          <Button 
-            variant="ghost" 
+          <Button
+            variant="ghost"
             className="w-full justify-start text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent"
             onClick={() => {
               logoutMutation.mutate(undefined, {
@@ -86,8 +91,8 @@ function NavItem({ href, icon, label }: { href: string; icon: React.ReactNode; l
   return (
     <Link href={href} className={cn(
       "flex items-center gap-3 px-3 py-2 rounded-md transition-colors text-sm font-medium",
-      isActive 
-        ? "bg-sidebar-primary text-sidebar-primary-foreground" 
+      isActive
+        ? "bg-sidebar-primary text-sidebar-primary-foreground"
         : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
     )}>
       {icon}

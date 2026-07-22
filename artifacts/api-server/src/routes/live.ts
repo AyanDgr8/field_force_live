@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { eq, and, desc, gte } from "drizzle-orm";
+import { eq, and, desc, gte, inArray, sql } from "drizzle-orm";
 import { db } from "@workspace/db";
 import {
   usersTable,
@@ -8,6 +8,8 @@ import {
   dwellSegmentsTable,
   visitStopsTable,
   dayPlansTable,
+  trackedDevicesTable,
+  deviceCategoriesTable,
 } from "@workspace/db";
 import {
   GetLiveSummaryResponse,
@@ -117,6 +119,89 @@ router.get("/live/positions", requireAuth, async (req, res): Promise<void> => {
   }
 
   res.json(GetLivePositionsResponse.parse(positions));
+});
+
+// GET /live/all-positions — unified mobile-agent and GPS-device positions.
+router.get("/live/all-positions", requireAuth, async (req, res): Promise<void> => {
+  const customerId = await getAdminCustomerId(req.adminUserId!);
+  if (!customerId) { res.status(401).json({ error: "Admin not found" }); return; }
+
+  const result: Record<string, unknown>[] = [];
+  const users = await db.select().from(usersTable)
+    .where(and(eq(usersTable.customerId, customerId), eq(usersTable.role, "USER")));
+
+  for (const user of users) {
+    if (user.status === "SUSPENDED") continue;
+    const [ping] = await db.select().from(locationPingsTable)
+      .where(and(eq(locationPingsTable.userId, user.id), eq(locationPingsTable.sourceType, "MOBILE_APP")))
+      .orderBy(desc(locationPingsTable.recordedAt)).limit(1);
+    if (!ping) continue;
+
+    result.push({
+      sourceType: "MOBILE_APP",
+      latitude: ping.latitude,
+      longitude: ping.longitude,
+      speedKph: ping.speedKph ?? null,
+      recordedAt: ping.recordedAt,
+      userId: user.id,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      employeeCode: user.employeeCode,
+      liveStatus: user.liveStatus,
+      liveStatusSince: user.liveStatusSince,
+      emergencyActive: user.emergencyActive,
+      currentVisitStopId: user.currentVisitStopId ?? null,
+      deviceCategoryKey: "MOBILE_APP",
+      deviceCategoryColor: "#7c3aed",
+      deviceCategoryIconKey: "smartphone",
+    });
+  }
+
+  const devices = await db
+    .select({ device: trackedDevicesTable, category: deviceCategoriesTable })
+    .from(trackedDevicesTable)
+    .leftJoin(deviceCategoriesTable, eq(trackedDevicesTable.deviceCategoryId, deviceCategoriesTable.id))
+    .where(and(
+      eq(trackedDevicesTable.customerId, customerId),
+      sql`${trackedDevicesTable.lastLat} IS NOT NULL`,
+      sql`${trackedDevicesTable.lastLng} IS NOT NULL`,
+      sql`${trackedDevicesTable.lastFixAt} IS NOT NULL`,
+    ));
+
+  const assignedIds = [...new Set(devices.flatMap(({ device }) =>
+    device.assignedUserId == null ? [] : [device.assignedUserId],
+  ))];
+  const assignedUsers = assignedIds.length === 0 ? [] : await db
+    .select({ id: usersTable.id, firstName: usersTable.firstName, lastName: usersTable.lastName })
+    .from(usersTable)
+    .where(inArray(usersTable.id, assignedIds));
+  const assignedMap = new Map(assignedUsers.map(user => [user.id, user]));
+
+  for (const { device, category } of devices) {
+    if (device.lastLat == null || device.lastLng == null || !device.lastFixAt) continue;
+    const assignedUser = device.assignedUserId == null ? undefined : assignedMap.get(device.assignedUserId);
+    result.push({
+      sourceType: "GPS_DEVICE",
+      latitude: device.lastLat,
+      longitude: device.lastLng,
+      speedKph: device.lastSpeedKph ?? null,
+      recordedAt: device.lastFixAt,
+      deviceId: device.id,
+      deviceName: device.name ?? undefined,
+      vendorKey: device.vendorKey,
+      imei: device.imei ?? undefined,
+      deviceCategoryId: category?.id ?? undefined,
+      deviceCategoryKey: category?.key ?? "VEHICLE_TRACKER",
+      deviceCategoryColor: category?.colorHex ?? "#f97316",
+      deviceCategoryIconKey: category?.iconKey ?? "car",
+      ignition: device.lastIgnition ?? null,
+      alarm: device.lastAlarm ?? null,
+      assignedUserId: device.assignedUserId ?? null,
+      assignedUserName: assignedUser ? `${assignedUser.firstName} ${assignedUser.lastName}` : null,
+    });
+  }
+
+  res.json(result);
 });
 
 // GET /users/:id/speed-history

@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
+import { normalizeList } from '@/lib/normalize-list';
 
 export default function Attendance() {
   const [selectedUserId, setSelectedUserId] = useState<string>('all');
@@ -14,14 +15,16 @@ export default function Attendance() {
   const [toDate, setToDate] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
   
   const { data: users } = useListUsers({ role: 'USER' });
+  const userList = normalizeList<NonNullable<typeof users>[number]>(users, ['users']);
   
-  const activeUserId = selectedUserId !== 'all' ? Number(selectedUserId) : (users?.[0]?.id || 0);
+  const activeUserId = selectedUserId !== 'all' ? Number(selectedUserId) : (userList[0]?.id || 0);
 
   const attendanceParams = { userId: activeUserId, from: fromDate, to: toDate };
   const { data: records, isLoading } = useGetUserAttendanceReport(
     attendanceParams,
     { query: { enabled: !!activeUserId, queryKey: getGetUserAttendanceReportQueryKey(attendanceParams) } }
   );
+  const recordList = normalizeList<NonNullable<typeof records>[number]>(records, ['records', 'attendance']);
 
   return (
     <div className="max-w-5xl mx-auto space-y-6 pb-12">
@@ -45,7 +48,7 @@ export default function Attendance() {
                 <SelectValue placeholder="Select Agent" />
               </SelectTrigger>
               <SelectContent>
-                {users?.map(u => (
+                {userList.map(u => (
                   <SelectItem key={u.id} value={String(u.id)}>{u.firstName} {u.lastName}</SelectItem>
                 ))}
               </SelectContent>
@@ -60,7 +63,7 @@ export default function Attendance() {
         <CardContent className="p-0">
           {isLoading ? (
             <div className="p-12 text-center"><Loader2 className="w-6 h-6 animate-spin mx-auto text-muted-foreground" /></div>
-          ) : !records || records.length === 0 ? (
+          ) : recordList.length === 0 ? (
             <div className="p-12 text-center text-muted-foreground">
               <CalendarDays className="w-8 h-8 mx-auto mb-3 opacity-20" />
               No attendance records found for this period.
@@ -77,7 +80,7 @@ export default function Attendance() {
                   </tr>
                 </thead>
                 <tbody className="divide-y">
-                  {records.map((r, i) => (
+                  {recordList.map((r, i) => (
                     <tr key={i} className="hover:bg-muted/5">
                       <td className="px-6 py-3 font-medium">{r.date}</td>
                       <td className="px-6 py-3">{format(new Date(r.loginAt), 'HH:mm:ss')}</td>

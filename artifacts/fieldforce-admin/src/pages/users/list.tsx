@@ -1,13 +1,14 @@
 import { useState } from 'react';
-import { useLocation, Link } from 'wouter';
+import { Link } from 'wouter';
 import { useListUsers } from '@workspace/api-client-react';
 import { format } from 'date-fns';
-import { Plus, Search, UserCircle, Shield, ArrowRight } from 'lucide-react';
+import { Search, UserCircle, Shield, ArrowRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { normalizeList } from '@/lib/normalize-list';
 
 export default function UsersList() {
   const [roleFilter, setRoleFilter] = useState<string>('all');
@@ -19,7 +20,8 @@ export default function UsersList() {
     status: statusFilter !== 'all' ? statusFilter as any : undefined,
   });
 
-  const filteredUsers = users?.filter(u => 
+  const userList = normalizeList<NonNullable<typeof users>[number]>(users, ['users']);
+  const filteredUsers = userList.filter(u =>
     u.firstName.toLowerCase().includes(search.toLowerCase()) || 
     u.lastName.toLowerCase().includes(search.toLowerCase()) ||
     u.employeeCode.toLowerCase().includes(search.toLowerCase()) ||
@@ -33,11 +35,6 @@ export default function UsersList() {
           <h1 className="text-2xl font-bold tracking-tight">Fleet & Users</h1>
           <p className="text-sm text-muted-foreground mt-1">Manage field workforce and administrative access.</p>
         </div>
-        <Link href="/users/new">
-          <Button>
-            <Plus className="w-4 h-4 mr-2" /> Add User
-          </Button>
-        </Link>
       </div>
 
       <Card>

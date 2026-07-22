@@ -13,8 +13,6 @@ import {
   VerifyMobileOtpBody,
   VerifyMobileOtpResponse,
 } from "@workspace/api-zod";
-import { sendLoginOtpEmail } from "../lib/mailer.js";
-import { writeOtpLog } from "../lib/otpLog.js";
 
 const router: IRouter = Router();
 
@@ -92,7 +90,7 @@ router.post("/user/auth/otp/request", async (req, res): Promise<void> => {
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
 
   const { identifier } = parsed.data;
-  const { user, cred } = await resolveUser(identifier);
+  const { user } = await resolveUser(identifier);
 
   if (!user) { res.status(401).json({ error: "User not found" }); return; }
   if (user.role !== "USER") { res.status(403).json({ error: "This endpoint is for field users only" }); return; }
@@ -109,37 +107,9 @@ router.post("/user/auth/otp/request", async (req, res): Promise<void> => {
     consumedAt: null,
   });
 
-  try {
-    const otpLogFile = await writeOtpLog({
-      username: cred?.username ?? user.employeeCode,
-      code,
-      userId: user.id,
-      expiresAt,
-    });
-    req.log.info({ otpLogFile, userId: user.id }, "Mobile OTP written to audit log");
-  } catch (error) {
-    req.log.error({ err: error, userId: user.id }, "Failed to write mobile OTP audit log");
-  }
+  req.log.info({ otp: code, userId: user.id }, "Mobile OTP code for login");
 
-  if (!user.email) {
-    res.status(400).json({ error: "This account does not have an email address" });
-    return;
-  }
-
-  let otpRecipients: string[];
-  try {
-    otpRecipients = await sendLoginOtpEmail({
-      to: user.email,
-      code,
-      recipientName: user.firstName,
-    });
-  } catch (error) {
-    req.log.error({ err: error, userId: user.id }, "Failed to send mobile login OTP email");
-    res.status(502).json({ error: "Unable to send verification email. Please try again." });
-    return;
-  }
-
-  const otpSentTo = otpRecipients.map(maskContact).join(", ");
+  const otpSentTo = user.email ? maskContact(user.email) : maskContact(user.phoneNumber);
   res.json(RequestMobileOtpResponse.parse({ loginToken, otpSentTo }));
 });
 

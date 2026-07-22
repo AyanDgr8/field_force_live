@@ -13,6 +13,9 @@ import dispositionsRouter from "./dispositions";
 import configRouter from "./config";
 import mobileAuthRouter from "./mobileAuth";
 import mobileStatusRouter from "./mobileStatus";
+import devicesRouter from "./devices";
+import vendorAccountsRouter from "./vendorAccounts";
+import deviceCategoriesRouter from "./deviceCategories";
 
 const router: IRouter = Router();
 
@@ -30,5 +33,8 @@ router.use(dispositionsRouter);
 router.use(configRouter);
 router.use(mobileAuthRouter);
 router.use(mobileStatusRouter);
+router.use(devicesRouter);
+router.use(vendorAccountsRouter);
+router.use(deviceCategoriesRouter);
 
 export default router;

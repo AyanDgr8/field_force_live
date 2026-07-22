@@ -432,8 +432,8 @@ export const GetUserCurrentStopResponse = zod.object({
  */
 export const ListUserSessionsQueryParams = zod.object({
   "userId": zod.coerce.number(),
-  "from": zod.date().optional(),
-  "to": zod.date().optional()
+  "from": zod.coerce.date().optional(),
+  "to": zod.coerce.date().optional()
 })
 
 export const ListUserSessionsResponseItem = zod.object({
@@ -454,7 +454,7 @@ export const ListUserSessionsResponse = zod.array(ListUserSessionsResponseItem)
  */
 export const GetUserBreadcrumbQueryParams = zod.object({
   "userId": zod.coerce.number(),
-  "date": zod.date()
+  "date": zod.coerce.date()
 })
 
 export const GetUserBreadcrumbResponseItem = zod.object({
@@ -492,7 +492,7 @@ export const GetUserPlacesCalendarResponse = zod.array(GetUserPlacesCalendarResp
  */
 export const GetUserDwellSegmentsQueryParams = zod.object({
   "userId": zod.coerce.number(),
-  "date": zod.date()
+  "date": zod.coerce.date()
 })
 
 export const GetUserDwellSegmentsResponseItem = zod.object({
@@ -513,7 +513,7 @@ export const GetUserDwellSegmentsResponse = zod.array(GetUserDwellSegmentsRespon
  */
 export const GetUserDayPlanQueryParams = zod.object({
   "userId": zod.coerce.number(),
-  "date": zod.date()
+  "date": zod.coerce.date()
 })
 
 export const GetUserDayPlanResponse = zod.object({
@@ -871,7 +871,7 @@ export const IngestSessionResponse = zod.object({
  */
 export const GetMobileDayPlanQueryParams = zod.object({
   "userId": zod.coerce.number(),
-  "date": zod.date()
+  "date": zod.coerce.date()
 })
 
 export const GetMobileDayPlanResponse = zod.object({
@@ -1000,8 +1000,8 @@ export const GetConfigDispositionsResponse = zod.array(GetConfigDispositionsResp
  */
 export const GetUserAttendanceReportQueryParams = zod.object({
   "userId": zod.coerce.number(),
-  "from": zod.date().optional(),
-  "to": zod.date().optional()
+  "from": zod.coerce.date().optional(),
+  "to": zod.coerce.date().optional()
 })
 
 export const GetUserAttendanceReportResponseItem = zod.object({

@@ -19,6 +19,8 @@ import Settings from '@/pages/settings';
 import Attendance from '@/pages/attendance';
 import PublicTrack from '@/pages/public/track';
 import PublicOnboarding from '@/pages/public/onboarding';
+import Devices from '@/pages/devices';
+import VendorAccounts from '@/pages/vendor-accounts';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -48,6 +50,8 @@ function AppRoutes() {
             <Route path="/alerts" component={AlertsList} />
             <Route path="/attendance" component={Attendance} />
             <Route path="/settings" component={Settings} />
+            <Route path="/devices" component={Devices} />
+            <Route path="/vendor-accounts" component={VendorAccounts} />
             <Route component={NotFound} />
           </Switch>
         </Layout>

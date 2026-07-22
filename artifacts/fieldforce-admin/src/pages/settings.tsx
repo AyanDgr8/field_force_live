@@ -1,12 +1,15 @@
-import { useGetMe, useGetSimulatorStatus, useToggleSimulator, getGetSimulatorStatusQueryKey, useListDispositions, useCreateDisposition, useUpdateDisposition, useDeleteDisposition, getListDispositionsQueryKey } from '@workspace/api-client-react';
+import { useGetMe, useGetSimulatorStatus, useToggleSimulator, getGetSimulatorStatusQueryKey, useListDispositions, useCreateDisposition, useUpdateDisposition, useDeleteDisposition, getListDispositionsQueryKey, useListUsers } from '@workspace/api-client-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { useQueryClient } from '@tanstack/react-query';
-import { Shield, Activity, Trash2, Tag } from 'lucide-react';
+import { Shield, Activity, Trash2, Tag, Users, Plus, ArrowRight, UserCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
+import { Link } from 'wouter';
 import { cn } from '@/lib/utils';
+import { normalizeList } from '@/lib/normalize-list';
 
 export default function Settings() {
   const { data: user } = useGetMe();
@@ -15,9 +18,13 @@ export default function Settings() {
   const queryClient = useQueryClient();
 
   const { data: dispositions } = useListDispositions();
+  const dispositionList = normalizeList<NonNullable<typeof dispositions>[number]>(dispositions, ['dispositions']);
   const createDisp = useCreateDisposition();
   const updateDisp = useUpdateDisposition();
   const deleteDisp = useDeleteDisposition();
+
+  const { data: allUsers } = useListUsers({});
+  const userList = normalizeList<NonNullable<typeof allUsers>[number]>(allUsers, ['users']);
 
   const handleToggleSim = (checked: boolean) => {
     toggleSim.mutate({ data: { running: checked } }, {
@@ -36,7 +43,7 @@ export default function Settings() {
     createDisp.mutate({ data: { label, sortOrder: sortOrder || 0, active: true } }, {
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: getListDispositionsQueryKey() });
-        e.currentTarget.reset();
+        (e.target as HTMLFormElement).reset();
       }
     });
   };
@@ -48,9 +55,12 @@ export default function Settings() {
         <p className="text-sm text-muted-foreground mt-1">Manage your admin profile and system features.</p>
       </div>
 
+      {/* Admin Profile */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2"><Shield className="w-5 h-5 text-primary" /> Admin Profile</CardTitle>
+          <CardTitle className="flex items-center gap-2">
+            <Shield className="w-5 h-5 text-primary" /> Admin Profile
+          </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="grid grid-cols-2 gap-y-4 text-sm">
@@ -74,9 +84,75 @@ export default function Settings() {
         </CardContent>
       </Card>
 
+      {/* Team Members */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <div>
+            <CardTitle className="flex items-center gap-2">
+              <Users className="w-5 h-5 text-primary" /> Team Members
+            </CardTitle>
+            <CardDescription className="mt-1">
+              Manage field agents and administrators in your organisation.
+            </CardDescription>
+          </div>
+          <Link href="/users/new">
+            <Button size="sm">
+              <Plus className="w-4 h-4 mr-2" /> Add User
+            </Button>
+          </Link>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {userList.length === 0 ? (
+            <div className="text-center text-sm text-muted-foreground p-6 border border-dashed rounded-md">
+              No users yet. Click <strong>Add User</strong> to create the first one.
+            </div>
+          ) : (
+            <>
+              <div className="space-y-2">
+                {userList.slice(0, 8).map(u => (
+                  <div key={u.id} className="flex items-center justify-between p-3 border rounded-md bg-muted/20">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-semibold text-sm">
+                        {u.firstName[0]}{u.lastName[0]}
+                      </div>
+                      <div>
+                        <div className="text-sm font-medium">{u.firstName} {u.lastName}</div>
+                        <div className="text-xs text-muted-foreground">{u.email}</div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {u.role === 'ADMIN'
+                        ? <Badge variant="secondary" className="bg-amber-50 text-amber-700 gap-1"><Shield className="w-3 h-3" /> Admin</Badge>
+                        : <Badge variant="secondary" className="bg-blue-50 text-blue-700 gap-1"><UserCircle className="w-3 h-3" /> Agent</Badge>
+                      }
+                      <Link href={`/users/${u.id}`}>
+                        <Button variant="ghost" size="icon" className="h-7 w-7">
+                          <ArrowRight className="w-4 h-4" />
+                        </Button>
+                      </Link>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <Link href="/users">
+                <Button variant="ghost" className="w-full text-muted-foreground text-sm mt-1">
+                  {userList.length > 8
+                    ? `View all ${userList.length} users`
+                    : 'View full user list'}
+                  <ArrowRight className="w-4 h-4 ml-2" />
+                </Button>
+              </Link>
+            </>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Dispositions */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2"><Tag className="w-5 h-5 text-primary" /> Dispositions</CardTitle>
+          <CardTitle className="flex items-center gap-2">
+            <Tag className="w-5 h-5 text-primary" /> Dispositions
+          </CardTitle>
           <CardDescription>Configure visit closure outcomes for agents to select.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -91,24 +167,39 @@ export default function Settings() {
             </div>
             <Button type="submit" disabled={createDisp.isPending}>Add</Button>
           </form>
-          
+
           <div className="space-y-2 mt-4">
-            {dispositions?.map(d => (
+            {dispositionList.map(d => (
               <div key={d.id} className="flex items-center justify-between p-3 border rounded-md bg-muted/20">
                 <div className="flex items-center gap-3">
-                  <Switch 
-                    checked={d.active} 
-                    onCheckedChange={(checked) => updateDisp.mutate({ id: d.id, data: { active: checked } }, { onSuccess: () => queryClient.invalidateQueries({ queryKey: getListDispositionsQueryKey() }) })}
+                  <Switch
+                    checked={d.active}
+                    onCheckedChange={(checked) =>
+                      updateDisp.mutate({ id: d.id, data: { active: checked } }, {
+                        onSuccess: () => queryClient.invalidateQueries({ queryKey: getListDispositionsQueryKey() })
+                      })
+                    }
                   />
-                  <span className={cn("text-sm font-medium", !d.active && "text-muted-foreground line-through")}>{d.label}</span>
+                  <span className={cn("text-sm font-medium", !d.active && "text-muted-foreground line-through")}>
+                    {d.label}
+                  </span>
                 </div>
                 <div className="flex items-center gap-3">
-                  <span className="text-xs text-muted-foreground bg-background px-2 py-1 rounded border">Order: {d.sortOrder}</span>
-                  <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:bg-destructive/10" onClick={() => {
-                    if (confirm(`Delete disposition "${d.label}"?`)) {
-                      deleteDisp.mutate({ id: d.id }, { onSuccess: () => queryClient.invalidateQueries({ queryKey: getListDispositionsQueryKey() }) });
-                    }
-                  }}>
+                  <span className="text-xs text-muted-foreground bg-background px-2 py-1 rounded border">
+                    Order: {d.sortOrder}
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8 text-destructive hover:bg-destructive/10"
+                    onClick={() => {
+                      if (confirm(`Delete disposition "${d.label}"?`)) {
+                        deleteDisp.mutate({ id: d.id }, {
+                          onSuccess: () => queryClient.invalidateQueries({ queryKey: getListDispositionsQueryKey() })
+                        });
+                      }
+                    }}
+                  >
                     <Trash2 className="w-4 h-4" />
                   </Button>
                 </div>
@@ -123,6 +214,7 @@ export default function Settings() {
         </CardContent>
       </Card>
 
+      {/* Developer Tools */}
       <Card className="border-amber-200">
         <CardHeader className="bg-amber-50/50 pb-4 border-b border-amber-100">
           <CardTitle className="flex items-center gap-2 text-amber-900">
@@ -137,12 +229,13 @@ export default function Settings() {
             <div className="space-y-0.5">
               <Label htmlFor="sim-mode" className="text-base">Live Data Simulator</Label>
               <p className="text-sm text-muted-foreground max-w-md">
-                Generates synthetic movement data for all offline agents to demonstrate map features. Disables actual live ingestion while active.
+                Generates synthetic movement data for all offline agents to demonstrate map features.
+                Disables actual live ingestion while active.
               </p>
             </div>
-            <Switch 
-              id="sim-mode" 
-              checked={simStatus?.running || false} 
+            <Switch
+              id="sim-mode"
+              checked={simStatus?.running || false}
               onCheckedChange={handleToggleSim}
               disabled={toggleSim.isPending}
             />

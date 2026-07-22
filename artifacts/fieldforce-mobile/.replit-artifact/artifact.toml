@@ -1,0 +1,24 @@
+kind = "mobile"
+previewPath = "/fieldforce-mobile/"
+title = "FieldForce Live — Agent App"
+version = "1.0.0"
+id = "artifacts/fieldforce-mobile"
+router = "expo-domain"
+
+[[services]]
+name = "expo"
+ensurePreviewReachable = "/status"
+paths = [ "/fieldforce-mobile/" ]
+localPort = 25218
+
+[services.development]
+run = "pnpm --filter @workspace/fieldforce-mobile run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/fieldforce-mobile", "run", "build" ]
+run = [ "pnpm", "--filter", "@workspace/fieldforce-mobile", "run", "serve" ]
+
+[services.env]
+PORT = "25218"
+BASE_PATH = "/fieldforce-mobile/"
+EXPO_PUBLIC_DOMAIN = "${REPLIT_DEV_DOMAIN}"

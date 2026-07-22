@@ -1,16 +1,17 @@
 import { eq } from "drizzle-orm";
 import { db } from "@workspace/db";
-import { usersTable, addressesTable } from "@workspace/db";
+import { usersTable, addressesTable, vendorAccountsTable } from "@workspace/db";
 import { logger } from "./logger.js";
 import { ingestPings } from "./ingest.js";
 import { randomDelhiNcrCoord } from "./geo.js";
+import { mockBoltConnector } from "./gps/mockBoltConnector.js";
+import { processDevicePings } from "./devicePoller.js";
 
 const TICK_MS = 5000;
 const MAX_SPEED_KPH = 40;
 const MAX_SPEED_MPS = MAX_SPEED_KPH / 3.6;
-const DELTA_PER_TICK = (MAX_SPEED_MPS * TICK_MS) / 1000 / 111_000; // degrees per tick
+const DELTA_PER_TICK = (MAX_SPEED_MPS * TICK_MS) / 1000 / 111_000;
 
-// In-memory state
 const positions = new Map<number, { lat: number; lng: number }>();
 let intervalId: ReturnType<typeof setInterval> | null = null;
 
@@ -39,6 +40,7 @@ export function stopSimulator(): void {
 }
 
 async function tick(): Promise<void> {
+  // ── Mobile agents ──────────────────────────────────────────────────────────
   const users = await db
     .select()
     .from(usersTable)
@@ -46,10 +48,9 @@ async function tick(): Promise<void> {
 
   const activeUsers = users.filter(u => u.status === "ACTIVE");
 
-  const pings = await Promise.all(
+  const mobilePings = await Promise.all(
     activeUsers.map(async (u) => {
       if (!positions.has(u.id)) {
-        // Seed from first address or random
         const [addr] = await db
           .select()
           .from(addressesTable)
@@ -61,7 +62,6 @@ async function tick(): Promise<void> {
       }
 
       const pos = positions.get(u.id)!;
-      // Small random delta bounded to realistic speed
       const delta = DELTA_PER_TICK;
       const dLat = (Math.random() - 0.5) * 2 * delta;
       const dLng = (Math.random() - 0.5) * 2 * delta;
@@ -69,19 +69,37 @@ async function tick(): Promise<void> {
       const newLng = pos.lng + dLng;
       positions.set(u.id, { lat: newLat, lng: newLng });
 
-      const speedKph = Math.random() * MAX_SPEED_KPH;
-
       return {
         userId: u.id,
         latitude: newLat,
         longitude: newLng,
-        speedKph,
+        speedKph: Math.random() * MAX_SPEED_KPH,
         recordedAt: new Date(),
       };
     })
   );
 
-  if (pings.length > 0) {
-    await ingestPings(pings);
+  if (mobilePings.length > 0) {
+    await ingestPings(mobilePings);
+  }
+
+  // ── Mock GPS devices (MOCK_BOLT) ───────────────────────────────────────────
+  try {
+    // Find a MOCK_BOLT vendor account to get the customerId
+    const [mockAccount] = await db
+      .select()
+      .from(vendorAccountsTable)
+      .where(eq(vendorAccountsTable.vendorKey, "MOCK_BOLT"))
+      .limit(1);
+
+    if (mockAccount) {
+      const pings = await mockBoltConnector.fetchAll({
+        username: "mock",
+        password: "mock",
+      });
+      await processDevicePings(mockAccount, pings);
+    }
+  } catch (err) {
+    logger.warn({ err }, "Mock device tick error (non-fatal)");
   }
 }

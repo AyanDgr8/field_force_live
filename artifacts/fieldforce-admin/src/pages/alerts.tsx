@@ -5,17 +5,19 @@ import { AlertTriangle, Clock, ShieldAlert, Phone } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { normalizeList } from '@/lib/normalize-list';
 
 function UserAlertsPanel({ pos }: { pos: LivePosition }) {
   const queryClient = useQueryClient();
   const { data: alerts } = useListUserAlerts(pos.userId, { query: { enabled: !!pos.userId, refetchInterval: 5000, queryKey: getListUserAlertsQueryKey(pos.userId) } });
+  const alertList = normalizeList<NonNullable<typeof alerts>[number]>(alerts, ['alerts']);
 
   const acknowledge = async (alertId: number) => {
     await fetch(`/api/users/${pos.userId}/alerts/${alertId}/acknowledge`, { method: 'POST', credentials: 'include' });
     queryClient.invalidateQueries({ queryKey: getListUserAlertsQueryKey(pos.userId) });
     queryClient.invalidateQueries({ queryKey: getGetLivePositionsQueryKey() });
   };
-  const activeAlerts = alerts?.filter(a => !a.acknowledgedAt) || [];
+  const activeAlerts = alertList.filter(a => !a.acknowledgedAt);
   
   if (activeAlerts.length === 0) return null;
   
@@ -68,7 +70,8 @@ function UserAlertsPanel({ pos }: { pos: LivePosition }) {
 
 export default function AlertsList() {
   const { data: positions } = useGetLivePositions({ query: { refetchInterval: 5000, queryKey: getGetLivePositionsQueryKey() } });
-  const usersWithAlerts = positions?.filter(p => p.emergencyActive) || [];
+  const positionList = normalizeList<LivePosition>(positions, ['positions']);
+  const usersWithAlerts = positionList.filter(p => p.emergencyActive);
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto pb-12">

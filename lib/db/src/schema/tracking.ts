@@ -1,4 +1,4 @@
-import { mysqlTable, text, int, datetime, double, mysqlEnum } from "drizzle-orm/mysql-core";
+import { mysqlTable, text, int, datetime, double, mysqlEnum, boolean, json } from "drizzle-orm/mysql-core";
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
@@ -21,13 +21,25 @@ export type SessionRow = typeof sessionsTable.$inferSelect;
 
 export const locationPingsTable = mysqlTable("location_pings", {
   id: int("id").autoincrement().primaryKey(),
-  userId: int("user_id").notNull().references(() => usersTable.id),
+  userId: int("user_id").references(() => usersTable.id),
   latitude: double("latitude").notNull(),
   longitude: double("longitude").notNull(),
   speedKph: double("speed_kph"),
   accuracyM: double("accuracy_m"),
   batteryLevel: int("battery_level"),
   recordedAt: datetime("recorded_at", { mode: "date", fsp: 3 }).notNull(),
+  sourceType: text("source_type").notNull().default("MOBILE_APP"),
+  trackedDeviceId: int("tracked_device_id"),
+  deviceCategoryId: int("device_category_id"),
+  vendorKey: text("vendor_key"),
+  vendorPosId: text("vendor_pos_id"),
+  courseDeg: double("course_deg"),
+  ignition: boolean("ignition"),
+  alarm: text("alarm"),
+  totalDistanceRaw: double("total_distance_raw"),
+  speedSource: text("speed_source").notNull().default("DERIVED"),
+  vendorReportedAt: datetime("vendor_reported_at", { mode: "date", fsp: 3 }),
+  deviceTelemetry: json("device_telemetry"),
 });
 
 export const insertLocationPingSchema = createInsertSchema(locationPingsTable).omit({ id: true });

@@ -1,266 +1,170 @@
-import { useEffect, useRef, useState } from 'react';
-import { useGetLiveSummary, useGetLivePositions, getGetLiveSummaryQueryKey, getGetLivePositionsQueryKey } from '@workspace/api-client-react';
+import { useState } from 'react';
+import { normalizeList } from '@/lib/normalize-list';
+import { useQuery } from '@tanstack/react-query';
+import { useGetLiveSummary, getGetLiveSummaryQueryKey } from '@workspace/api-client-react';
 import { Card, CardContent } from '@/components/ui/card';
-import { AlertCircle, Navigation, Radio, MapPinOff, ListFilter, Activity } from 'lucide-react';
+import { AlertCircle, Navigation, Radio, MapPinOff, ListFilter, Activity, Wifi, Cpu } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { LiveStatusBadge } from '@/components/ui/live-status-badge';
-import L from 'leaflet';
-import 'leaflet/dist/leaflet.css';
+import { LiveMap, CategoryTabs, type UnifiedPosition, type CategoryFilter } from '@/components/ui/live-map';
 
-type MapPosition = {
-  userId: number;
-  firstName: string;
-  lastName: string;
-  employeeCode: string;
-  latitude: number;
-  longitude: number;
-  status: string;
-};
+const BASE = import.meta.env.BASE_URL.replace(/\/$/, '');
 
-declare global {
-  interface Window {
-    google?: any;
-    fieldForceGoogleMapsLoader?: Promise<void>;
-  }
+async function fetchAllPositions(): Promise<UnifiedPosition[]> {
+  const r = await fetch(`${BASE}/api/live/all-positions`, { credentials: 'include' });
+  if (!r.ok) return [];
+  return r.json();
 }
 
-function loadGoogleMaps(apiKey: string): Promise<void> {
-  if (window.google?.maps) return Promise.resolve();
-  if (window.fieldForceGoogleMapsLoader) return window.fieldForceGoogleMapsLoader;
+interface DeviceCategory { id: number; key: string; label: string; colorHex: string; iconKey: string; }
 
-  window.fieldForceGoogleMapsLoader = new Promise((resolve, reject) => {
-    const script = document.createElement('script');
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(apiKey)}&v=weekly`;
-    script.async = true;
-    script.onload = () => resolve();
-    script.onerror = () => reject(new Error('Unable to load Google Maps'));
-    document.head.appendChild(script);
-  });
-
-  return window.fieldForceGoogleMapsLoader;
-}
-
-function GoogleLiveMap({ positions }: { positions: MapPosition[] }) {
-  const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string | undefined;
-  const mapElement = useRef<HTMLDivElement>(null);
-  const [loadError, setLoadError] = useState(false);
-
-  useEffect(() => {
-    if (!apiKey || !mapElement.current) return;
-
-    let cancelled = false;
-    let markers: any[] = [];
-
-    loadGoogleMaps(apiKey)
-      .then(() => {
-        if (cancelled || !mapElement.current || !window.google) return;
-
-        const center = positions[0]
-          ? { lat: positions[0].latitude, lng: positions[0].longitude }
-          : { lat: 28.6139, lng: 77.209 };
-        const map = new window.google.maps.Map(mapElement.current, {
-          center,
-          zoom: positions.length ? 13 : 10,
-          mapTypeControl: false,
-          streetViewControl: false,
-        });
-
-        if (!positions.length) return;
-
-        const bounds = new window.google.maps.LatLngBounds();
-        markers = positions.map((position) => {
-          const point = { lat: position.latitude, lng: position.longitude };
-          bounds.extend(point);
-          const marker = new window.google.maps.Marker({
-            map,
-            position: point,
-            title: `${position.firstName} ${position.lastName} (${position.employeeCode})`,
-          });
-          const info = new window.google.maps.InfoWindow({
-            content: `<strong>${position.firstName} ${position.lastName}</strong><br>${position.employeeCode}<br>${position.status}`,
-          });
-          marker.addListener('click', () => info.open({ map, anchor: marker }));
-          return marker;
-        });
-
-        if (positions.length === 1) map.setCenter(center);
-        else map.fitBounds(bounds, 60);
-      })
-      .catch(() => setLoadError(true));
-
-    return () => {
-      cancelled = true;
-      markers.forEach((marker) => marker.setMap(null));
-    };
-  }, [apiKey, positions]);
-
-  if (!apiKey || loadError) {
-    return <MapSetupMessage loadError={loadError} />;
-  }
-
-  return (
-    <div className="relative h-full w-full">
-      <div ref={mapElement} className="h-full w-full" />
-      {!positions.length && (
-        <div className="pointer-events-none absolute inset-x-4 top-4 rounded-md bg-background/90 p-3 text-center text-sm shadow">
-          Waiting for location data from field users.
-        </div>
-      )}
-    </div>
-  );
-}
-
-function OpenStreetMap({ positions }: { positions: MapPosition[] }) {
-  const mapElement = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!mapElement.current) return;
-
-    const center: L.LatLngExpression = positions[0]
-      ? [positions[0].latitude, positions[0].longitude]
-      : [28.6139, 77.209];
-    const map = L.map(mapElement.current).setView(center, positions.length ? 13 : 10);
-
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-      maxZoom: 19,
-    }).addTo(map);
-
-    const markers = positions.map((position) =>
-      L.marker([position.latitude, position.longitude])
-        .addTo(map)
-        .bindPopup(
-          `<strong>${position.firstName} ${position.lastName}</strong><br>${position.employeeCode}<br>${position.status}`,
-        ),
-    );
-
-    if (markers.length > 1) {
-      map.fitBounds(L.featureGroup(markers).getBounds(), { padding: [60, 60] });
-    }
-
-    return () => {
-      map.remove();
-    };
-  }, [positions]);
-
-  return (
-    <div className="relative h-full w-full">
-      <div ref={mapElement} className="h-full w-full" />
-      {!positions.length && (
-        <div className="pointer-events-none absolute inset-x-4 top-4 z-[500] rounded-md bg-background/90 p-3 text-center text-sm shadow">
-          Waiting for location data from field users.
-        </div>
-      )}
-    </div>
-  );
-}
-
-function LiveMap({ positions }: { positions: MapPosition[] }) {
-  const provider = (import.meta.env.VITE_MAP_PROVIDER ?? 'leaflet').toLowerCase();
-
-  if (provider === 'google') {
-    return <GoogleLiveMap positions={positions} />;
-  }
-
-  return <OpenStreetMap positions={positions} />;
-}
-
-function MapSetupMessage({ loadError = false }: { loadError?: boolean }) {
-  return (
-    <div className="w-full h-full bg-muted/30 border border-dashed rounded-lg flex flex-col items-center justify-center p-6 text-center">
-      <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center mb-4">
-        <Navigation className="w-6 h-6 text-primary" />
-      </div>
-      <h3 className="font-semibold text-lg mb-2">Live Map View</h3>
-      <p className="text-muted-foreground text-sm max-w-sm mb-4">
-        {loadError
-          ? 'Google Maps could not be loaded. Check the API key, billing, and allowed website origins.'
-          : 'Provide a Google Maps API key in environment variables to enable the real-time map visualization.'}
-      </p>
-      <div className="px-4 py-2 bg-card border rounded-md text-xs font-mono text-muted-foreground">
-        VITE_GOOGLE_MAPS_API_KEY=your_key_here
-      </div>
-    </div>
-  );
+async function fetchCategories(): Promise<DeviceCategory[]> {
+  const r = await fetch(`${BASE}/api/device-categories`, { credentials: 'include' });
+  if (!r.ok) return [];
+  return r.json();
 }
 
 export default function Dashboard() {
   const { data: summary } = useGetLiveSummary({ query: { refetchInterval: 5000, queryKey: getGetLiveSummaryQueryKey() } });
-  const { data: positions } = useGetLivePositions({ query: { refetchInterval: 5000, queryKey: getGetLivePositionsQueryKey() } });
-  
+
+  const { data: positions = [] } = useQuery<UnifiedPosition[]>({
+    queryKey: ['all-positions'],
+    queryFn: fetchAllPositions,
+    refetchInterval: 5000,
+  });
+
+  const { data: categories = [] } = useQuery<DeviceCategory[]>({
+    queryKey: ['device-categories'],
+    queryFn: fetchCategories,
+  });
+  const positionList = normalizeList<UnifiedPosition>(positions, ['positions']);
+  const categoryList = normalizeList<DeviceCategory>(categories, ['categories']);
+
   const [search, setSearch] = useState('');
-  
-  const filteredPositions = positions?.filter(p => 
-    p.firstName.toLowerCase().includes(search.toLowerCase()) || 
-    p.lastName.toLowerCase().includes(search.toLowerCase()) ||
-    p.employeeCode.toLowerCase().includes(search.toLowerCase())
-  );
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [activeCategory, setActiveCategory] = useState<CategoryFilter>('ALL');
+
+  const mobilePositions = positionList.filter(p => p.sourceType === 'MOBILE_APP');
+  const deviceCount = positionList.filter(p => p.sourceType === 'GPS_DEVICE').length;
+  const alarmCount = positionList.filter(p => p.alarm).length;
+
+  const filteredMobile = mobilePositions.filter(p => {
+    const q = search.toLowerCase();
+    return (
+      (p.firstName ?? '').toLowerCase().includes(q) ||
+      (p.lastName ?? '').toLowerCase().includes(q) ||
+      (p.employeeCode ?? '').toLowerCase().includes(q)
+    );
+  });
 
   return (
     <div className="h-full flex flex-col gap-6">
       {/* Top Stats Row */}
-      <div className="grid grid-cols-5 gap-4 shrink-0">
+      <div className="grid grid-cols-6 gap-4 shrink-0">
         <StatCard title="Active Agents" value={summary?.activeCount ?? 0} icon={<Navigation className="w-4 h-4 text-blue-500" />} />
         <StatCard title="Moving" value={summary?.movingCount ?? 0} icon={<Activity className="w-4 h-4 text-emerald-500" />} />
         <StatCard title="Stationary" value={summary?.stationaryCount ?? 0} icon={<Radio className="w-4 h-4 text-amber-500" />} />
         <StatCard title="Offline" value={summary?.offlineCount ?? 0} icon={<MapPinOff className="w-4 h-4 text-slate-400" />} />
-        <StatCard 
-          title="Active Alerts" 
-          value={summary?.alertCount ?? 0} 
-          icon={<AlertCircle className="w-4 h-4 text-destructive" />} 
-          className={summary?.alertCount && summary.alertCount > 0 ? "border-destructive/50 bg-destructive/5" : ""}
+        <StatCard title="GPS Devices" value={deviceCount} icon={<Cpu className="w-4 h-4 text-orange-500" />} />
+        <StatCard
+          title="Active Alarms"
+          value={alarmCount}
+          icon={<AlertCircle className="w-4 h-4 text-destructive" />}
+          className={alarmCount > 0 ? "border-destructive/50 bg-destructive/5" : ""}
+        />
+      </div>
+
+      {/* Category filter tabs */}
+      <div className="shrink-0 -mt-2">
+        <CategoryTabs
+          categories={categoryList}
+          positions={positionList}
+          active={activeCategory}
+          onChange={setActiveCategory}
         />
       </div>
 
       <div className="flex-1 flex gap-6 min-h-0">
-        {/* Left: Map Area */}
+        {/* Left: Map */}
         <div className="flex-1 relative rounded-lg overflow-hidden border bg-card">
-          <LiveMap positions={positions ?? []} />
+          <LiveMap
+            positions={positionList}
+            selectedPositionId={selectedId}
+            activeCategory={activeCategory}
+            categories={categoryList}
+            onPositionClick={(pos) => {
+              if (pos.sourceType === 'MOBILE_APP') setSelectedId(`u-${pos.userId}`);
+              else setSelectedId(`d-${pos.deviceId}`);
+            }}
+          />
         </div>
 
-        {/* Right: Agent List */}
+        {/* Right: Mobile agent list */}
         <div className="w-80 flex flex-col gap-4 shrink-0">
           <Card className="flex-1 flex flex-col h-full overflow-hidden">
             <div className="p-4 border-b flex-shrink-0 space-y-3">
               <div className="flex items-center justify-between">
                 <h3 className="font-semibold flex items-center gap-2">
-                  <ListFilter className="w-4 h-4" /> Live Fleet
+                  <ListFilter className="w-4 h-4" /> Mobile Agents
                 </h3>
-                <Badge variant="secondary">{positions?.length || 0}</Badge>
+                <Badge variant="secondary">{mobilePositions.length}</Badge>
               </div>
-              <Input 
-                placeholder="Search agent or code..." 
+              {deviceCount > 0 && (
+                <div className="flex items-center gap-1.5 text-xs text-muted-foreground bg-muted/50 rounded px-2 py-1.5">
+                  <Wifi className="w-3 h-3 text-orange-500" />
+                  <span>{deviceCount} GPS device{deviceCount > 1 ? 's' : ''} on map</span>
+                  {alarmCount > 0 && <span className="ml-auto text-red-500 font-medium">{alarmCount} alarm{alarmCount > 1 ? 's' : ''}</span>}
+                </div>
+              )}
+              <Input
+                placeholder="Search agent or code..."
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                onChange={e => setSearch(e.target.value)}
                 className="h-8 text-sm"
               />
             </div>
-            
+
             <ScrollArea className="flex-1">
               <div className="p-2 space-y-1">
-                {filteredPositions?.map(pos => (
-                  <div key={pos.userId} className={cn("flex flex-col p-3 rounded-md cursor-pointer transition-colors border", pos.emergencyActive ? "border-destructive/50 bg-destructive/5 animate-pulse" : "border-transparent hover:border-border hover:bg-muted/50")}>
-                    <div className="flex justify-between items-start mb-1">
-                      <span className="font-medium text-sm truncate">{pos.firstName} {pos.lastName}</span>
-                      <LiveStatusBadge pos={pos} />
-                    </div>
-                    <div className="flex justify-between items-center text-xs text-muted-foreground">
-                      <span className="font-mono">{pos.employeeCode}</span>
-                      {pos.speedKph !== null && pos.speedKph > 0 && (
-                        <span className="flex items-center gap-1">
-                          <Activity className="w-3 h-3" /> {Math.round(pos.speedKph)} km/h
-                        </span>
+                {filteredMobile.map(pos => {
+                  const key = `u-${pos.userId}`;
+                  return (
+                    <div
+                      key={key}
+                      onClick={() => {
+                        setActiveCategory('ALL');
+                        setSelectedId(selectedId === key ? null : key);
+                      }}
+                      className={cn(
+                        "flex flex-col p-3 rounded-md cursor-pointer transition-colors border",
+                        pos.emergencyActive
+                          ? "border-destructive/50 bg-destructive/5 animate-pulse"
+                          : selectedId === key
+                            ? "border-violet-700 bg-violet-50 shadow-[0_0_18px_rgba(124,58,237,0.35)]"
+                            : "border-transparent hover:border-border hover:bg-muted/50"
                       )}
+                    >
+                      <div className="flex justify-between items-start mb-1">
+                        <span className="font-medium text-sm truncate">{pos.firstName} {pos.lastName}</span>
+                        <LiveStatusBadge pos={pos as any} />
+                      </div>
+                      <div className="flex justify-between items-center text-xs text-muted-foreground">
+                        <span className="font-mono">{pos.employeeCode}</span>
+                        {pos.speedKph != null && pos.speedKph > 0 && (
+                          <span className="flex items-center gap-1">
+                            <Activity className="w-3 h-3" /> {Math.round(pos.speedKph)} km/h
+                          </span>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ))}
-                
-                {filteredPositions?.length === 0 && (
+                  );
+                })}
+                {filteredMobile.length === 0 && (
                   <div className="p-4 text-center text-sm text-muted-foreground">
-                    No agents found matching search.
+                    {search ? 'No agents match search.' : 'No active agents.'}
                   </div>
                 )}
               </div>
