@@ -18,6 +18,7 @@ if (!process.env.DATABASE_URL && !process.env.MYSQL_HOST) {
 
 const apiPort = process.env.API_PORT ?? "7070";
 const frontendPort = process.env.FRONTEND_PORT ?? "7075";
+const useHttps = process.env.USE_HTTPS === "true";
 const children = [];
 let stopping = false;
 
@@ -60,7 +61,8 @@ const frontend = run("artifacts/fieldforce-admin", {
   APP_ROOT: process.cwd(),
   BASE_PATH: process.env.BASE_PATH ?? "/",
   API_PROXY_TARGET:
-    process.env.API_PROXY_TARGET ?? `http://localhost:${apiPort}`,
+    process.env.API_PROXY_TARGET ??
+    `${useHttps ? "https" : "http"}://localhost:${apiPort}`,
   API_PROXY_SECURE:
     process.env.API_PROXY_SECURE ?? "false",
 });

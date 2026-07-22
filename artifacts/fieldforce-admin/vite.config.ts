@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import path from 'path';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
@@ -21,6 +22,26 @@ if (Number.isNaN(port) || port <= 0) {
 
 const basePath = process.env.BASE_PATH;
 const apiProxyTarget = process.env.API_PROXY_TARGET;
+const useHttps = process.env.USE_HTTPS === 'true';
+const appRoot = process.env.APP_ROOT ?? process.cwd();
+
+function resolveCertificatePath(value: string | undefined, fallback: string) {
+  const configuredPath = value ?? fallback;
+  return path.isAbsolute(configuredPath)
+    ? configuredPath
+    : path.resolve(appRoot, configuredPath);
+}
+
+const https = useHttps
+  ? {
+      key: fs.readFileSync(
+        resolveCertificatePath(process.env.SSL_KEY_PATH, 'ssl/privkey.pem'),
+      ),
+      cert: fs.readFileSync(
+        resolveCertificatePath(process.env.SSL_CERT_PATH, 'ssl/fullchain.pem'),
+      ),
+    }
+  : undefined;
 
 if (!basePath) {
   throw new Error(
@@ -70,6 +91,7 @@ export default defineConfig({
     strictPort: true,
     host: '0.0.0.0',
     allowedHosts: true,
+    https,
     fs: {
       strict: true,
     },
@@ -89,5 +111,6 @@ export default defineConfig({
     port,
     host: '0.0.0.0',
     allowedHosts: true,
+    https,
   },
 });
