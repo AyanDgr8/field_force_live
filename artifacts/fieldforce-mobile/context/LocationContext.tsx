@@ -7,8 +7,13 @@ import React, {
   useState,
 } from 'react';
 import { AppState, AppStateStatus, Platform } from 'react-native';
-import { apiPost } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
+import {
+  enqueue,
+  flush as flushQueue,
+  loadQueue,
+  subscribe,
+} from '@/lib/offlineQueue';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -23,6 +28,8 @@ interface LocationContextValue {
   permissionGranted: boolean;
   requestPermission: () => Promise<boolean>;
   getCoords: () => Promise<Coords | null>;
+  /** Requests still waiting on connectivity — surfaced as an offline badge. */
+  pendingSync: number;
 }
 
 // ─── Context ──────────────────────────────────────────────────────────────────
@@ -57,8 +64,21 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
   const [coords, setCoords] = useState<Coords | null>(null);
   const [permissionGranted, setPermissionGranted] = useState(false);
+  const [pendingSync, setPendingSync] = useState(0);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pendingPingsRef = useRef<object[]>([]);
+
+  // Load the durable queue and surface its size immediately. Delivery waits
+  // until AuthContext has restored the signed-in user.
+  useEffect(() => {
+    const unsubscribe = subscribe(setPendingSync);
+    void loadQueue();
+    return unsubscribe;
+  }, []);
+
+  useEffect(() => {
+    if (user) void flushQueue();
+  }, [user]);
 
   // Request location permission (native) or check web availability
   const requestPermission = useCallback(async (): Promise<boolean> => {
@@ -111,17 +131,14 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  // Flush buffered pings to the server
+  // Hand the batch to the durable queue, which persists it before attempting the
+  // network and retries later if the agent is out of signal. No re-buffering
+  // here — losing the app process no longer loses the pings.
   const flushPings = useCallback(async () => {
     if (!user || pendingPingsRef.current.length === 0) return;
     const toSend = [...pendingPingsRef.current];
     pendingPingsRef.current = [];
-    try {
-      await apiPost('/api/ingest/location', { pings: toSend });
-    } catch {
-      // re-buffer on failure
-      pendingPingsRef.current = [...toSend, ...pendingPingsRef.current];
-    }
+    await enqueue('/api/ingest/location', { pings: toSend });
   }, [user]);
 
   // Collect one ping and buffer it
@@ -165,6 +182,9 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
         }
       } else if (nextState === 'active' && !intervalRef.current) {
         collectPing();
+        // Coming back to foreground is the cheapest signal that connectivity may
+        // have returned, so retry anything stranded while backgrounded.
+        void flushQueue();
         intervalRef.current = setInterval(collectPing, 30_000);
       }
     };
@@ -182,7 +202,13 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <LocationContext.Provider
-      value={{ coords, permissionGranted, requestPermission, getCoords }}
+      value={{
+        coords,
+        permissionGranted,
+        requestPermission,
+        getCoords,
+        pendingSync,
+      }}
     >
       {children}
     </LocationContext.Provider>

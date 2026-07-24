@@ -8,6 +8,11 @@ import { startDevicePoller } from "./lib/devicePoller.js";
 
 const app: Express = express();
 
+const configuredOrigins = (process.env.CORS_ORIGIN ?? "")
+  .split(",")
+  .map((origin) => origin.trim().replace(/\/+$/, ""))
+  .filter(Boolean);
+
 app.use(
   pinoHttp({
     logger,
@@ -26,7 +31,18 @@ app.use(
     },
   }),
 );
-app.use(cors());
+app.use(cors({
+  origin(origin, callback) {
+    // Native mobile applications do not send an Origin header. Browser
+    // requests must come from a configured deployment origin in production.
+    if (!origin || process.env.NODE_ENV !== "production" || configuredOrigins.includes(origin.replace(/\/+$/, ""))) {
+      callback(null, true);
+      return;
+    }
+    callback(new Error("Origin is not allowed by CORS"));
+  },
+  credentials: true,
+}));
 app.use(cookieParser());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));

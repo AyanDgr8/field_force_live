@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import { eq, and, isNull } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { v4 as uuidv4 } from "uuid";
+import { z } from "zod";
 import { db, insertReturning, updateReturning } from "@workspace/db";
 import {
   usersTable,
@@ -37,6 +38,7 @@ import {
 } from "@workspace/api-zod";
 import { requireAuth } from "../../middlewares/auth.js";
 import { randomDelhiNcrCoord } from "../../lib/geo.js";
+import { sendPasswordChangedEmail } from "../../lib/mailer.js";
 
 const router: IRouter = Router();
 
@@ -198,6 +200,65 @@ router.patch("/users/:id", requireAuth, async (req, res): Promise<void> => {
   if (!user) { res.status(404).json({ error: "User not found" }); return; }
 
   res.json(UpdateUserResponse.parse(user));
+});
+
+const AdminPasswordResetBody = z.object({
+  newPassword: z.string().min(8).max(128),
+});
+
+// POST /users/:id/password — tenant-scoped administrator password reset.
+router.post("/users/:id/password", requireAuth, async (req, res): Promise<void> => {
+  const userId = Number(req.params.id);
+  const body = AdminPasswordResetBody.safeParse(req.body);
+  if (!Number.isInteger(userId) || !body.success) {
+    res.status(400).json({ error: "A password of at least 8 characters is required" });
+    return;
+  }
+
+  const adminUser = await db.query.usersTable.findFirst({
+    where: eq(usersTable.id, req.adminUserId!),
+  });
+  if (!adminUser) {
+    res.status(401).json({ error: "Admin not found" });
+    return;
+  }
+
+  const [user] = await db.select().from(usersTable).where(and(
+    eq(usersTable.id, userId),
+    eq(usersTable.customerId, adminUser.customerId),
+  ));
+  if (!user) {
+    res.status(404).json({ error: "User not found" });
+    return;
+  }
+
+  const passwordHash = await bcrypt.hash(body.data.newPassword, 10);
+  const [credential] = await db.select().from(credentialsTable)
+    .where(eq(credentialsTable.userId, user.id));
+
+  if (credential) {
+    await db.update(credentialsTable)
+      .set({ passwordHash })
+      .where(eq(credentialsTable.id, credential.id));
+  } else {
+    await db.insert(credentialsTable).values({
+      userId: user.id,
+      username: user.employeeCode,
+      passwordHash,
+    });
+  }
+
+  try {
+    await sendPasswordChangedEmail({
+      to: user.email,
+      recipientName: user.firstName,
+      changedByAdmin: true,
+    });
+  } catch (error) {
+    req.log.error({ err: error, userId: user.id }, "Failed to send admin password reset notification");
+  }
+
+  res.json({ message: "Password updated successfully" });
 });
 
 // GET /users/:id/onboarding-invite

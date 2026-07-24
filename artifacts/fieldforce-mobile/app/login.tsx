@@ -15,6 +15,7 @@ import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@/context/AuthContext';
 import { useColors } from '@/hooks/useColors';
+import { apiPost } from '@/lib/api';
 
 export default function LoginScreen() {
   const colors = useColors();
@@ -26,6 +27,13 @@ export default function LoginScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [resetStep, setResetStep] = useState<'none' | 'request' | 'confirm'>('none');
+  const [resetEmail, setResetEmail] = useState('');
+  const [resetToken, setResetToken] = useState('');
+  const [resetCode, setResetCode] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [message, setMessage] = useState<string | null>(null);
 
   const handleLogin = async () => {
     if (!identifier.trim() || !password.trim()) {
@@ -41,6 +49,66 @@ export default function LoginScreen() {
       const msg = e instanceof Error ? e.message : 'Login failed';
       setError(msg);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const requestReset = async () => {
+    if (!resetEmail.trim()) {
+      setError('Enter the email address for your agent account.');
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const data = await apiPost<{ resetToken: string; message: string }>(
+        '/api/user/auth/password-reset/request',
+        { email: resetEmail.trim().toLowerCase() },
+        null,
+      );
+      setResetToken(data.resetToken);
+      setMessage(data.message);
+      setResetStep('confirm');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Unable to send reset email');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const confirmReset = async () => {
+    if (!/^\d{6}$/.test(resetCode)) {
+      setError('Enter the 6-digit code from your email.');
+      return;
+    }
+    if (newPassword.length < 8) {
+      setError('Your new password must contain at least 8 characters.');
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setError('The new passwords do not match.');
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await apiPost<{ message: string }>(
+        '/api/user/auth/password-reset/confirm',
+        { resetToken, code: resetCode, newPassword },
+        null,
+      );
+      setResetStep('none');
+      setPassword('');
+      setNewPassword('');
+      setConfirmPassword('');
+      setResetCode('');
+      setMessage(data.message);
+      setIdentifier(resetEmail.trim().toLowerCase());
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Unable to reset password');
     } finally {
       setLoading(false);
     }
@@ -69,9 +137,15 @@ export default function LoginScreen() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          <Text style={s.heading}>Sign In</Text>
+          <Text style={s.heading}>
+            {resetStep === 'none' ? 'Sign In' : 'Reset Password'}
+          </Text>
           <Text style={s.subheading}>
-            Use your email or employee ID to continue
+            {resetStep === 'none'
+              ? 'Use your email or employee ID to continue'
+              : resetStep === 'request'
+                ? 'We will email a 6-digit code to your registered address'
+                : 'Enter the code from your email and choose a new password'}
           </Text>
 
           {error ? (
@@ -81,63 +155,148 @@ export default function LoginScreen() {
             </View>
           ) : null}
 
-          {/* Identifier */}
-          <Text style={s.label}>Email / Employee ID</Text>
-          <View style={s.inputWrap}>
-            <Feather name="user" size={18} color={colors.mutedForeground} style={s.inputIcon} />
-            <TextInput
-              style={s.input}
-              placeholder="e.g. john.doe@company.com"
-              placeholderTextColor={colors.mutedForeground}
-              value={identifier}
-              onChangeText={setIdentifier}
-              autoCapitalize="none"
-              autoCorrect={false}
-              keyboardType="email-address"
-              returnKeyType="next"
-              editable={!loading}
-              testID="identifier-input"
-            />
-          </View>
+          {message ? (
+            <View style={s.successBox}>
+              <Feather name="check-circle" size={16} color="#16a34a" />
+              <Text style={s.successText}>{message}</Text>
+            </View>
+          ) : null}
 
-          {/* Password */}
-          <Text style={s.label}>Password</Text>
-          <View style={s.inputWrap}>
-            <Feather name="lock" size={18} color={colors.mutedForeground} style={s.inputIcon} />
-            <TextInput
-              style={[s.input, { flex: 1 }]}
-              placeholder="••••••••"
-              placeholderTextColor={colors.mutedForeground}
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry={!showPassword}
-              returnKeyType="done"
-              onSubmitEditing={handleLogin}
-              editable={!loading}
-              testID="password-input"
-            />
-            <Pressable onPress={() => setShowPassword((v) => !v)} hitSlop={12}>
-              <Feather
-                name={showPassword ? 'eye-off' : 'eye'}
-                size={18}
-                color={colors.mutedForeground}
-              />
-            </Pressable>
-          </View>
+          {resetStep === 'none' ? (
+            <>
+              <Text style={s.label}>Email / Employee ID</Text>
+              <View style={s.inputWrap}>
+                <Feather name="user" size={18} color={colors.mutedForeground} style={s.inputIcon} />
+                <TextInput
+                  style={s.input}
+                  placeholder="e.g. john.doe@company.com"
+                  placeholderTextColor={colors.mutedForeground}
+                  value={identifier}
+                  onChangeText={setIdentifier}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  keyboardType="email-address"
+                  returnKeyType="next"
+                  editable={!loading}
+                  testID="identifier-input"
+                />
+              </View>
 
-          {/* Submit */}
-          <Pressable
-            style={({ pressed }) => [s.btn, pressed && s.btnPressed, loading && s.btnDisabled]}
-            onPress={handleLogin}
-            disabled={loading}
-            testID="login-btn"
-          >
-            {loading ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={s.btnText}>Sign In</Text>
-            )}
-          </Pressable>
+              <Text style={s.label}>Password</Text>
+              <View style={s.inputWrap}>
+                <Feather name="lock" size={18} color={colors.mutedForeground} style={s.inputIcon} />
+                <TextInput
+                  style={[s.input, { flex: 1 }]}
+                  placeholder="••••••••"
+                  placeholderTextColor={colors.mutedForeground}
+                  value={password}
+                  onChangeText={setPassword}
+                  secureTextEntry={!showPassword}
+                  returnKeyType="done"
+                  onSubmitEditing={handleLogin}
+                  editable={!loading}
+                  testID="password-input"
+                />
+                <Pressable onPress={() => setShowPassword((v) => !v)} hitSlop={12}>
+                  <Feather name={showPassword ? 'eye-off' : 'eye'} size={18} color={colors.mutedForeground} />
+                </Pressable>
+              </View>
+
+              <Pressable onPress={() => {
+                setResetEmail(identifier.includes('@') ? identifier : '');
+                setResetStep('request');
+                setError(null);
+                setMessage(null);
+              }}>
+                <Text style={s.linkText}>Forgot password?</Text>
+              </Pressable>
+
+              <Pressable
+                style={({ pressed }) => [s.btn, pressed && s.btnPressed, loading && s.btnDisabled]}
+                onPress={handleLogin}
+                disabled={loading}
+                testID="login-btn"
+              >
+                {loading ? <ActivityIndicator color="#fff" /> : <Text style={s.btnText}>Sign In</Text>}
+              </Pressable>
+            </>
+          ) : resetStep === 'request' ? (
+            <>
+              <Text style={s.label}>Registered email</Text>
+              <View style={s.inputWrap}>
+                <Feather name="mail" size={18} color={colors.mutedForeground} />
+                <TextInput
+                  style={s.input}
+                  value={resetEmail}
+                  onChangeText={setResetEmail}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  keyboardType="email-address"
+                  editable={!loading}
+                  placeholder="agent@company.com"
+                  placeholderTextColor={colors.mutedForeground}
+                />
+              </View>
+              <Pressable style={s.btn} onPress={requestReset} disabled={loading}>
+                {loading ? <ActivityIndicator color="#fff" /> : <Text style={s.btnText}>Email Reset Code</Text>}
+              </Pressable>
+              <Pressable onPress={() => setResetStep('none')} disabled={loading}>
+                <Text style={s.linkText}>Back to sign in</Text>
+              </Pressable>
+            </>
+          ) : (
+            <>
+              <Text style={s.label}>6-digit reset code</Text>
+              <View style={s.inputWrap}>
+                <Feather name="hash" size={18} color={colors.mutedForeground} />
+                <TextInput
+                  style={s.input}
+                  value={resetCode}
+                  onChangeText={(value) => setResetCode(value.replace(/\D/g, '').slice(0, 6))}
+                  keyboardType="number-pad"
+                  maxLength={6}
+                  editable={!loading}
+                  placeholder="000000"
+                  placeholderTextColor={colors.mutedForeground}
+                />
+              </View>
+              <Text style={s.label}>New password</Text>
+              <View style={s.inputWrap}>
+                <Feather name="lock" size={18} color={colors.mutedForeground} />
+                <TextInput
+                  style={s.input}
+                  value={newPassword}
+                  onChangeText={setNewPassword}
+                  secureTextEntry={!showPassword}
+                  editable={!loading}
+                  placeholder="At least 8 characters"
+                  placeholderTextColor={colors.mutedForeground}
+                />
+              </View>
+              <Text style={s.label}>Confirm new password</Text>
+              <View style={s.inputWrap}>
+                <Feather name="lock" size={18} color={colors.mutedForeground} />
+                <TextInput
+                  style={s.input}
+                  value={confirmPassword}
+                  onChangeText={setConfirmPassword}
+                  secureTextEntry={!showPassword}
+                  editable={!loading}
+                  placeholder="Repeat new password"
+                  placeholderTextColor={colors.mutedForeground}
+                />
+              </View>
+              <Pressable onPress={() => setShowPassword((value) => !value)}>
+                <Text style={s.linkText}>{showPassword ? 'Hide passwords' : 'Show passwords'}</Text>
+              </Pressable>
+              <Pressable style={s.btn} onPress={confirmReset} disabled={loading}>
+                {loading ? <ActivityIndicator color="#fff" /> : <Text style={s.btnText}>Update Password</Text>}
+              </Pressable>
+              <Pressable onPress={() => setResetStep('request')} disabled={loading}>
+                <Text style={s.linkText}>Request another code</Text>
+              </Pressable>
+            </>
+          )}
         </ScrollView>
       </KeyboardAvoidingView>
     </View>
@@ -201,6 +360,16 @@ const styles = (colors: ReturnType<typeof useColors>) =>
       marginBottom: 16,
     },
     errorText: { fontSize: 14, color: '#ef4444', flex: 1 },
+    successBox: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      backgroundColor: '#f0fdf4',
+      borderRadius: 10,
+      padding: 12,
+      marginBottom: 16,
+    },
+    successText: { fontSize: 14, color: '#166534', flex: 1 },
     label: {
       fontSize: 13,
       fontWeight: '600' as const,
@@ -238,5 +407,12 @@ const styles = (colors: ReturnType<typeof useColors>) =>
       color: '#ffffff',
       fontSize: 16,
       fontWeight: '700' as const,
+    },
+    linkText: {
+      color: colors.primary,
+      fontSize: 14,
+      fontWeight: '600' as const,
+      textAlign: 'center',
+      marginVertical: 10,
     },
   });

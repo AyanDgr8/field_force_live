@@ -3,6 +3,7 @@ import { eq, or } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { v4 as uuidv4 } from "uuid";
 import jwt from "jsonwebtoken";
+import { z } from "zod";
 import { db } from "@workspace/db";
 import { credentialsTable, otpTokensTable, usersTable } from "@workspace/db";
 import {
@@ -13,6 +14,10 @@ import {
   VerifyMobileOtpBody,
   VerifyMobileOtpResponse,
 } from "@workspace/api-zod";
+import {
+  sendPasswordChangedEmail,
+  sendPasswordResetCodeEmail,
+} from "../lib/mailer.js";
 
 const router: IRouter = Router();
 
@@ -82,6 +87,118 @@ router.post("/user/auth/login", async (req, res): Promise<void> => {
       role: user.role,
     },
   }));
+});
+
+const PasswordResetRequestBody = z.object({
+  email: z.string().trim().email(),
+});
+
+const PasswordResetConfirmBody = z.object({
+  resetToken: z.string().uuid(),
+  code: z.string().regex(/^\d{6}$/),
+  newPassword: z.string().min(8).max(128),
+});
+
+// POST /user/auth/password-reset/request
+router.post("/user/auth/password-reset/request", async (req, res): Promise<void> => {
+  const parsed = PasswordResetRequestBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Enter a valid email address" });
+    return;
+  }
+
+  // Always return the same shape so this endpoint cannot be used to enumerate
+  // field-agent accounts.
+  const resetToken = uuidv4();
+  const [user] = await db.select().from(usersTable)
+    .where(eq(usersTable.email, parsed.data.email));
+
+  if (user?.role === "USER" && user.status === "ACTIVE") {
+    const code = String(Math.floor(100000 + Math.random() * 900000));
+    await db.insert(otpTokensTable).values({
+      userId: user.id,
+      loginToken: resetToken,
+      code,
+      expiresAt: new Date(Date.now() + 10 * 60 * 1000),
+      consumedAt: null,
+    });
+
+    try {
+      await sendPasswordResetCodeEmail({
+        to: user.email,
+        code,
+        recipientName: user.firstName,
+      });
+    } catch (error) {
+      req.log.error({ err: error, userId: user.id }, "Failed to send password reset email");
+      res.status(503).json({ error: "Unable to send reset email right now. Please try again." });
+      return;
+    }
+  }
+
+  res.json({
+    resetToken,
+    message: "If an active agent account exists for that email, a reset code has been sent.",
+  });
+});
+
+// POST /user/auth/password-reset/confirm
+router.post("/user/auth/password-reset/confirm", async (req, res): Promise<void> => {
+  const parsed = PasswordResetConfirmBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Enter the 6-digit code and a password of at least 8 characters" });
+    return;
+  }
+
+  const [otp] = await db.select().from(otpTokensTable)
+    .where(eq(otpTokensTable.loginToken, parsed.data.resetToken));
+
+  if (
+    !otp ||
+    otp.consumedAt ||
+    otp.expiresAt < new Date() ||
+    otp.code !== parsed.data.code
+  ) {
+    res.status(400).json({ error: "Invalid or expired reset code" });
+    return;
+  }
+
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, otp.userId));
+  if (!user || user.role !== "USER") {
+    res.status(400).json({ error: "Invalid or expired reset code" });
+    return;
+  }
+
+  const passwordHash = await bcrypt.hash(parsed.data.newPassword, 10);
+  const [credential] = await db.select().from(credentialsTable)
+    .where(eq(credentialsTable.userId, user.id));
+
+  if (credential) {
+    await db.update(credentialsTable)
+      .set({ passwordHash })
+      .where(eq(credentialsTable.id, credential.id));
+  } else {
+    await db.insert(credentialsTable).values({
+      userId: user.id,
+      username: user.employeeCode,
+      passwordHash,
+    });
+  }
+
+  await db.update(otpTokensTable)
+    .set({ consumedAt: new Date() })
+    .where(eq(otpTokensTable.id, otp.id));
+
+  try {
+    await sendPasswordChangedEmail({
+      to: user.email,
+      recipientName: user.firstName,
+    });
+  } catch (error) {
+    req.log.error({ err: error, userId: user.id }, "Failed to send password changed email");
+  }
+
+  res.json({ message: "Password updated. You can now sign in." });
 });
 
 // POST /user/auth/otp/request

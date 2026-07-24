@@ -20,6 +20,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useLocation } from '@/context/LocationContext';
 import { useColors } from '@/hooks/useColors';
 import { apiGet, apiPost } from '@/lib/api';
+import { enqueue } from '@/lib/offlineQueue';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -148,7 +149,7 @@ export default function StopDetailScreen() {
 
       // Update agent status to BUSY at this stop
       if (coords) {
-        await apiPost('/api/user/status', {
+        await enqueue('/api/user/status', {
           userId: user.id,
           status: 'BUSY',
           visitStopId: stop.id,
@@ -176,13 +177,25 @@ export default function StopDetailScreen() {
       Alert.alert('Select a disposition first');
       return;
     }
+    // The queue drops payloads the server permanently rejects, so catch the one
+    // limit the server enforces here rather than losing the close silently.
+    const trimmedNotes = notes.trim();
+    if (trimmedNotes.length > 250) {
+      Alert.alert('Notes too long', 'Please keep notes to 250 characters or less.');
+      return;
+    }
+
     setActionLoading(true);
     try {
       const coords = await getCoords();
       const now = new Date().toISOString();
-      await apiPost(`/api/user/visit/${stop.id}/disposition`, {
+
+      // Queued, not posted directly: closing a visit is the agent's actual work
+      // product and must survive a dead zone. enqueue() persists first, then
+      // attempts delivery immediately, so this is unchanged when online.
+      await enqueue(`/api/user/visit/${stop.id}/disposition`, {
         dispositionId: selectedDisposition,
-        notes: notes.trim() || undefined,
+        notes: trimmedNotes || undefined,
         reachedAt: stop.reachedAt ?? now,
         startedAt: stop.startedAt ?? now,
         closedAt: now,
@@ -190,9 +203,10 @@ export default function StopDetailScreen() {
         lng: coords?.longitude,
       });
 
-      // Set status back to IDLE
+      // Set status back to IDLE — queued after the disposition so the two always
+      // land in that order.
       if (coords) {
-        await apiPost('/api/user/status', {
+        await enqueue('/api/user/status', {
           userId: user.id,
           status: 'IDLE',
           lat: coords.latitude,

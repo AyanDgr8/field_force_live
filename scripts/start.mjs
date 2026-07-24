@@ -18,7 +18,11 @@ if (!process.env.DATABASE_URL && !process.env.MYSQL_HOST) {
 
 const apiPort = process.env.API_PORT ?? "7070";
 const frontendPort = process.env.FRONTEND_PORT ?? "7075";
+const mobilePort = process.env.MOBILE_PORT ?? "8081";
 const useHttps = process.env.USE_HTTPS === "true";
+// The Expo dev server is opt-in: most backend work does not need it, and it
+// pulls in a Metro bundler that is slow to boot.
+const startMobile = process.env.START_MOBILE === "true";
 const children = [];
 let stopping = false;
 
@@ -67,12 +71,24 @@ const frontend = run("artifacts/fieldforce-admin", {
     process.env.API_PROXY_SECURE ?? "false",
 });
 
+// Expo needs an absolute origin for /api/* because the mobile bundle is served
+// from the Metro port, not behind the admin panel's dev proxy.
+const mobile = startMobile
+  ? run("artifacts/fieldforce-mobile", {
+      PORT: mobilePort,
+      APP_ROOT: process.cwd(),
+      EXPO_PUBLIC_API_URL:
+        process.env.EXPO_PUBLIC_API_URL ??
+        `${useHttps ? "https" : "http"}://localhost:${apiPort}`,
+    })
+  : null;
+
 for (const signal of ["SIGINT", "SIGTERM"]) {
   process.on(signal, () => stop(signal));
 }
 
 const results = await Promise.all(
-  [api, frontend].map(
+  [api, frontend, ...(mobile ? [mobile] : [])].map(
     (child) =>
       new Promise((resolve) => {
         child.on("error", (error) => {

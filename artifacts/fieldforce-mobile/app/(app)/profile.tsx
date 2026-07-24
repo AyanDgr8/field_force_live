@@ -19,8 +19,8 @@ import { apiPost } from '@/lib/api';
 export default function ProfileScreen() {
   const colors = useColors();
   const insets = useSafeAreaInsets();
-  const { user, token, logout } = useAuth();
-  const { permissionGranted, requestPermission, getCoords } = useLocation();
+  const { user, logout } = useAuth();
+  const { permissionGranted, requestPermission, getCoords, pendingSync } = useLocation();
 
   // Request location permission if not granted
   useEffect(() => {
@@ -131,6 +131,12 @@ export default function ProfileScreen() {
         <Text style={[s.sectionLabel, { color: colors.mutedForeground }]}>APP</Text>
         <Row icon="info" label="Version" value="1.0.0" colors={colors} />
         <Row icon="server" label="Build" value="FieldForce Live" colors={colors} />
+        <Row
+          icon={pendingSync > 0 ? 'cloud-off' : 'cloud'}
+          label="Offline sync"
+          value={pendingSync > 0 ? `${pendingSync} pending` : 'Up to date'}
+          colors={colors}
+        />
       </View>
 
       {/* Logout */}

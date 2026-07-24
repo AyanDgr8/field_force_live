@@ -17,7 +17,7 @@ import React, {
   useState,
 } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { apiPost } from '@/lib/api';
+import { enqueue } from '@/lib/offlineQueue';
 import { useAuth } from '@/context/AuthContext';
 import { useLocation } from '@/context/LocationContext';
 
@@ -94,7 +94,9 @@ export function ShiftProvider({ children }: { children: React.ReactNode }) {
     try {
       const coords = await getCoords();
       const now = new Date().toISOString();
-      await apiPost('/api/ingest/session', {
+      // Queued so an agent starting their day without signal is not blocked —
+      // the shift is recorded locally and syncs when coverage returns.
+      await enqueue('/api/ingest/session', {
         userId: user.id,
         event: 'LOGIN',
         latitude: coords?.latitude ?? 0,
@@ -103,7 +105,7 @@ export function ShiftProvider({ children }: { children: React.ReactNode }) {
       });
       // Also set status to IDLE on server
       if (coords) {
-        await apiPost('/api/user/status', {
+        await enqueue('/api/user/status', {
           userId: user.id,
           status: 'IDLE',
           lat: coords.latitude,
@@ -131,7 +133,7 @@ export function ShiftProvider({ children }: { children: React.ReactNode }) {
     try {
       const coords = await getCoords();
       const now = new Date().toISOString();
-      await apiPost('/api/ingest/session', {
+      await enqueue('/api/ingest/session', {
         userId: user.id,
         event: 'LOGOUT',
         latitude: coords?.latitude ?? 0,
@@ -140,13 +142,13 @@ export function ShiftProvider({ children }: { children: React.ReactNode }) {
       });
       // Set status back to IDLE before clocking out
       if (coords) {
-        await apiPost('/api/user/status', {
+        await enqueue('/api/user/status', {
           userId: user.id,
           status: 'IDLE',
           lat: coords.latitude,
           lng: coords.longitude,
           at: now,
-        }).catch(() => null); // best-effort
+        });
       }
       await persist('CLOCKED_OUT', null);
       await AsyncStorage.removeItem(CLOCKED_AT_KEY);
@@ -168,7 +170,7 @@ export function ShiftProvider({ children }: { children: React.ReactNode }) {
     setState((s) => ({ ...s, loading: true, error: null }));
     try {
       const coords = await getCoords();
-      await apiPost('/api/user/status', {
+      await enqueue('/api/user/status', {
         userId: user.id,
         status: 'BUSY',
         lat: coords?.latitude ?? 0,
@@ -194,7 +196,7 @@ export function ShiftProvider({ children }: { children: React.ReactNode }) {
     setState((s) => ({ ...s, loading: true, error: null }));
     try {
       const coords = await getCoords();
-      await apiPost('/api/user/status', {
+      await enqueue('/api/user/status', {
         userId: user.id,
         status: 'IDLE',
         lat: coords?.latitude ?? 0,

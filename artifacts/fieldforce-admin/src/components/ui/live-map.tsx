@@ -46,8 +46,22 @@ const CATEGORY_DEFAULTS: Record<string, { color: string; label: string }> = {
   ASSET_TAG:         { color: '#14b8a6', label: 'Asset Tag' },
 };
 
+const MOBILE_STATUS_COLORS = {
+  DEFAULT: '#7c3aed',
+  IDLE: '#2563eb',
+  BUSY: '#f59e0b',
+  OFFLINE: '#64748b',
+  EMERGENCY: '#dc2626',
+} as const;
+
 function getCategoryColor(pos: UnifiedPosition): string {
-  if (pos.sourceType === 'MOBILE_APP') return pos.emergencyActive ? '#dc2626' : '#7c3aed';
+  if (pos.sourceType === 'MOBILE_APP') {
+    if (pos.emergencyActive) return MOBILE_STATUS_COLORS.EMERGENCY;
+    if (pos.liveStatus === 'ON_SHIFT_IDLE') return MOBILE_STATUS_COLORS.IDLE;
+    if (pos.liveStatus === 'BUSY') return MOBILE_STATUS_COLORS.BUSY;
+    if (pos.liveStatus === 'OFFLINE') return MOBILE_STATUS_COLORS.OFFLINE;
+    return MOBILE_STATUS_COLORS.DEFAULT;
+  }
   return pos.deviceCategoryColor ?? CATEGORY_DEFAULTS[pos.deviceCategoryKey ?? 'VEHICLE_TRACKER']?.color ?? '#f97316';
 }
 
@@ -111,8 +125,10 @@ function AssetPin({ color, stale }: { color: string; stale?: boolean }) {
 }
 
 // ─── Main marker dispatcher ───────────────────────────────────────────────────
-function MarkerPin({ pos, selected = false }: { pos: UnifiedPosition; selected?: boolean }) {
-  const color = selected ? '#581c87' : getCategoryColor(pos);
+function MarkerPin({ pos }: { pos: UnifiedPosition }) {
+  // Selection is rendered as a ring around the marker, so retain the status
+  // color instead of hiding it when an agent is selected.
+  const color = getCategoryColor(pos);
   const ageMs = Date.now() - new Date(pos.recordedAt).getTime();
   const stale = ageMs > 10 * 60 * 1000;
   const categoryKey = pos.deviceCategoryKey ?? (pos.sourceType === 'MOBILE_APP' ? 'MOBILE_APP' : 'VEHICLE_TRACKER');
@@ -151,6 +167,15 @@ function MarkerWithTooltip({ pos, onClick, selected = false }: { pos: UnifiedPos
     : (pos.deviceName ?? pos.imei ?? `Device #${pos.deviceId}`);
 
   const source = pos.sourceType === 'MOBILE_APP' ? 'Mobile App' : `GPS Device — ${pos.vendorKey}`;
+  const agentStatus = pos.emergencyActive
+    ? 'Emergency'
+    : pos.liveStatus === 'ON_SHIFT_IDLE'
+      ? 'Idle'
+      : pos.liveStatus === 'BUSY'
+        ? 'Busy'
+        : pos.liveStatus === 'OFFLINE'
+          ? 'Offline'
+          : pos.liveStatus;
 
   return (
     <div
@@ -165,7 +190,7 @@ function MarkerWithTooltip({ pos, onClick, selected = false }: { pos: UnifiedPos
           <span className="absolute left-1/2 top-1/2 w-11 h-11 -translate-x-1/2 -translate-y-1/2 rounded-full border-4 border-fuchsia-300 shadow-[0_0_22px_rgba(192,132,252,0.95)] pointer-events-none" />
         </>
       )}
-      <MarkerPin pos={pos} selected={selected} />
+      <MarkerPin pos={pos} />
       {(hover || selected) && (
         <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 z-50 bg-popover border rounded-md px-2.5 py-2 text-xs shadow-xl whitespace-nowrap pointer-events-none min-w-40">
           <div className="font-semibold">{label}</div>
@@ -174,6 +199,7 @@ function MarkerWithTooltip({ pos, onClick, selected = false }: { pos: UnifiedPos
             <div>Ignition: <span className={pos.ignition ? 'text-green-600' : 'text-gray-500'}>{pos.ignition ? 'ON' : 'OFF'}</span></div>
           )}
           {pos.speedKph != null && <div>Speed: {Math.round(pos.speedKph)} km/h</div>}
+          {pos.sourceType === 'MOBILE_APP' && agentStatus && <div>Status: {agentStatus}</div>}
           <div className="text-muted-foreground mt-0.5">Source: {source}</div>
           <div className="text-muted-foreground">Last fix: {fixAgo}</div>
         </div>
@@ -192,7 +218,7 @@ function Legend({ categories }: { categories: { key: string; label: string; colo
           <span className="w-3 h-3 rounded-sm border border-white shadow-sm" style={{ backgroundColor: c.color }} />
           {c.label}
           <span className="text-muted-foreground">
-            {c.key === 'MOBILE_APP' ? '● circle' : c.key === 'VEHICLE_TRACKER' ? '▲ arrow' : c.key === 'PERSONAL_TRACKER' ? '◎ person' : '■ square'}
+            {c.key.startsWith('MOBILE_') ? '● circle' : c.key === 'VEHICLE_TRACKER' ? '▲ arrow' : c.key === 'PERSONAL_TRACKER' ? '◎ person' : '■ square'}
           </span>
         </div>
       ))}
@@ -296,7 +322,10 @@ export function LiveMap({ positions, onPositionClick, selectedPositionId = null,
   }, [isLoaded, positions, selectedPositionId]);
 
   const legendCategories = [
-    { key: 'MOBILE_APP', label: 'Mobile App', color: '#7c3aed' },
+    { key: 'MOBILE_IDLE', label: 'Agent — Idle', color: MOBILE_STATUS_COLORS.IDLE },
+    { key: 'MOBILE_BUSY', label: 'Agent — Busy', color: MOBILE_STATUS_COLORS.BUSY },
+    { key: 'MOBILE_OFFLINE', label: 'Agent — Offline', color: MOBILE_STATUS_COLORS.OFFLINE },
+    { key: 'MOBILE_EMERGENCY', label: 'Agent — Emergency', color: MOBILE_STATUS_COLORS.EMERGENCY },
     ...categories.filter(c => c.key !== 'MOBILE_APP').map(c => ({ key: c.key, label: c.label, color: c.colorHex })),
   ];
 

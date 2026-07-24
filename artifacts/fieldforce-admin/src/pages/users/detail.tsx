@@ -17,7 +17,8 @@ import { format } from 'date-fns';
 import { 
   ArrowLeft, Map as MapIcon, Calendar, Activity, 
   AlertTriangle, Phone, Mail, MapPin, Building,
-  ShieldAlert, Settings, Loader2, Copy, CheckCircle2, ChevronRight, Share
+  ShieldAlert, Settings, Loader2, Copy, CheckCircle2, ChevronRight, Share,
+  KeyRound
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -25,6 +26,17 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { Link } from 'wouter';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
 
 export default function UserDetail({ params }: { params: { id: string } }) {
   const userId = parseInt(params.id);
@@ -66,6 +78,10 @@ export default function UserDetail({ params }: { params: { id: string } }) {
         </div>
         
         <div className="flex gap-2">
+          <ResetPasswordButton
+            userId={userId}
+            userName={`${user.firstName} ${user.lastName}`}
+          />
           {user.role === 'USER' && (
             <Link href={`/users/${user.id}/day-plan`}>
               <Button><Calendar className="w-4 h-4 mr-2" /> Day Plan Builder</Button>
@@ -185,6 +201,116 @@ export default function UserDetail({ params }: { params: { id: string } }) {
         </div>
       </div>
     </div>
+  );
+}
+
+function ResetPasswordButton({
+  userId,
+  userName,
+}: {
+  userId: number;
+  userName: string;
+}) {
+  const { toast } = useToast();
+  const [open, setOpen] = useState(false);
+  const [password, setPassword] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const reset = async () => {
+    if (password.length < 8) {
+      toast({ variant: 'destructive', title: 'Password too short', description: 'Use at least 8 characters.' });
+      return;
+    }
+    if (password !== confirm) {
+      toast({ variant: 'destructive', title: 'Passwords do not match' });
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const response = await fetch(`/api/users/${userId}/password`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ newPassword: password }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(data.error ?? 'Unable to reset password');
+
+      toast({
+        title: 'Password updated',
+        description: `${userName} has been notified by email.`,
+      });
+      setPassword('');
+      setConfirm('');
+      setOpen(false);
+    } catch (error) {
+      toast({
+        variant: 'destructive',
+        title: 'Reset failed',
+        description: error instanceof Error ? error.message : 'Unable to reset password',
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="outline">
+          <KeyRound className="w-4 h-4 mr-2" /> Reset Password
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Reset password</DialogTitle>
+          <DialogDescription>
+            Set a new password for {userName}. The password itself will not be sent by email.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 py-2">
+          <div className="space-y-2">
+            <Label htmlFor="new-password">New password</Label>
+            <Input
+              id="new-password"
+              type={showPassword ? 'text' : 'password'}
+              autoComplete="new-password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              placeholder="At least 8 characters"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="confirm-password">Confirm password</Label>
+            <Input
+              id="confirm-password"
+              type={showPassword ? 'text' : 'password'}
+              autoComplete="new-password"
+              value={confirm}
+              onChange={(event) => setConfirm(event.target.value)}
+            />
+          </div>
+          <label className="flex items-center gap-2 text-sm text-muted-foreground">
+            <input
+              type="checkbox"
+              checked={showPassword}
+              onChange={(event) => setShowPassword(event.target.checked)}
+            />
+            Show password
+          </label>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => setOpen(false)} disabled={saving}>Cancel</Button>
+          <Button onClick={reset} disabled={saving || !password || !confirm}>
+            {saving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+            Update Password
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
