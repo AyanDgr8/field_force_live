@@ -75,6 +75,7 @@
     "zod": "catalog:"
   },
   "dependencies": {
-    "@react-google-maps/api": "^2.20.8"
+    "@react-google-maps/api": "^2.20.8",
+    "qrcode.react": "^4.2.0"
   }
 }

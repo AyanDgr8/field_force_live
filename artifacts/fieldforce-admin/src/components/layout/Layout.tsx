@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { useLocation, Link } from 'wouter';
 import { useGetMe, useLogout } from '@workspace/api-client-react';
-import { Loader2, Map, Users, AlertTriangle, Settings, LogOut, Activity, CalendarDays, Cpu, Link2 } from 'lucide-react';
+import { Loader2, Map, Users, AlertTriangle, Settings, LogOut, Activity, CalendarDays, Cpu, Link2, QrCode } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 
@@ -45,6 +45,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           <NavItem href="/users" icon={<Users className="w-5 h-5" />} label="Fleet & Users" />
           <NavItem href="/attendance" icon={<CalendarDays className="w-5 h-5" />} label="Attendance" />
           <NavItem href="/alerts" icon={<AlertTriangle className="w-5 h-5" />} label="Alerts" />
+          <NavItem href="/qrcode" icon={<QrCode className="w-5 h-5" />} label="Mobile App QR" />
 
           <p className="px-3 text-[10px] font-semibold uppercase tracking-widest text-sidebar-foreground/40 mb-1 mt-3">GPS Devices</p>
           <NavItem href="/devices" icon={<Cpu className="w-5 h-5" />} label="Tracked Devices" />

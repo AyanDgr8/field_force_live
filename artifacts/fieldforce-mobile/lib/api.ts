@@ -1,3 +1,5 @@
+import Constants from 'expo-constants';
+
 /**
  * Lightweight fetch wrapper for the FieldForce mobile API.
  * All mobile endpoints live under /api/* on the same domain as the admin panel.
@@ -17,7 +19,8 @@ export function setApiToken(t: string | null) {
  *   1. EXPO_PUBLIC_API_URL  — explicit full origin, e.g. https://mwmcrm.voicemeetme.net
  *                             or http://192.168.1.50:7070 when testing on a real device.
  *   2. EXPO_PUBLIC_DOMAIN   — bare host (Replit-style); assumed https.
- *   3. localhost:<API_PORT> — local dev. Must match API_PORT in the root .env (7070).
+ *   3. Expo/Metro's LAN host — local Expo Go on a physical phone.
+ *   4. localhost:<API_PORT> — simulator/web local development fallback.
  *
  * A physical phone cannot reach the dev machine over `localhost`, so set
  * EXPO_PUBLIC_API_URL to the LAN IP when running on-device.
@@ -30,6 +33,19 @@ export function baseUrl(): string {
   if (domain) return `https://${domain.replace(/\/+$/, '')}`;
 
   const port = process.env.EXPO_PUBLIC_API_PORT ?? '7070';
+
+  if (__DEV__) {
+    const hostUri = Constants.expoConfig?.hostUri;
+    if (hostUri?.endsWith('.exp.direct')) {
+      return `https://${hostUri}`;
+    }
+
+    const metroHost = hostUri?.split(':')[0];
+    if (metroHost && metroHost !== 'localhost' && metroHost !== '127.0.0.1') {
+      return `http://${metroHost}:${port}`;
+    }
+  }
+
   return `http://localhost:${port}`;
 }
 

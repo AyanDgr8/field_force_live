@@ -21,6 +21,7 @@ import PublicTrack from '@/pages/public/track';
 import PublicOnboarding from '@/pages/public/onboarding';
 import Devices from '@/pages/devices';
 import VendorAccounts from '@/pages/vendor-accounts';
+import MobileAppQrCode from '@/pages/qrcode';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -52,6 +53,7 @@ function AppRoutes() {
             <Route path="/settings" component={Settings} />
             <Route path="/devices" component={Devices} />
             <Route path="/vendor-accounts" component={VendorAccounts} />
+            <Route path="/qrcode" component={MobileAppQrCode} />
             <Route component={NotFound} />
           </Switch>
         </Layout>

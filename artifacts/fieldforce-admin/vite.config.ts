@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'path';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
-import { defineConfig } from 'vite';
+import { defineConfig, type Plugin } from 'vite';
 
 import runtimeErrorOverlay from '@replit/vite-plugin-runtime-error-modal';
 
@@ -24,6 +24,47 @@ const basePath = process.env.BASE_PATH;
 const apiProxyTarget = process.env.API_PROXY_TARGET;
 const useHttps = process.env.USE_HTTPS === 'true';
 const appRoot = process.env.APP_ROOT ?? process.cwd();
+const mobilePort = process.env.MOBILE_PORT ?? '8081';
+const fallbackMobileAppUrl = process.env.VITE_MOBILE_APP_URL ?? '';
+
+const mobileAppUrlPlugin: Plugin = {
+  name: 'fieldforce-mobile-app-url',
+  configureServer(server) {
+    server.middlewares.use('/__mobile-app-url', async (_req, res) => {
+      let url = fallbackMobileAppUrl;
+
+      try {
+        const response = await fetch(`http://127.0.0.1:${mobilePort}`, {
+          headers: {
+            Accept: 'application/expo+json,application/json',
+            'Expo-Platform': 'ios',
+          },
+          signal: AbortSignal.timeout(2_000),
+        });
+
+        if (response.ok) {
+          const manifest = (await response.json()) as {
+            extra?: {
+              expoClient?: { hostUri?: string };
+              expoGo?: { debuggerHost?: string };
+            };
+          };
+          const hostUri =
+            manifest.extra?.expoClient?.hostUri ??
+            manifest.extra?.expoGo?.debuggerHost;
+          if (hostUri) url = `exp://${hostUri}`;
+        }
+      } catch {
+        // Metro may still be starting. The page polls and will retry.
+      }
+
+      res.statusCode = url ? 200 : 503;
+      res.setHeader('Content-Type', 'application/json');
+      res.setHeader('Cache-Control', 'no-store');
+      res.end(JSON.stringify({ url }));
+    });
+  },
+};
 
 function resolveCertificatePath(value: string | undefined, fallback: string) {
   const configuredPath = value ?? fallback;
@@ -52,6 +93,7 @@ if (!basePath) {
 export default defineConfig({
   base: basePath,
   plugins: [
+    mobileAppUrlPlugin,
     react(),
     tailwindcss(),
     runtimeErrorOverlay(),

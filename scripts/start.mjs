@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
 import { spawn } from "node:child_process";
+import { networkInterfaces } from "node:os";
 
 if (existsSync(".env")) {
   process.loadEnvFile(".env");
@@ -19,16 +20,31 @@ if (!process.env.DATABASE_URL && !process.env.MYSQL_HOST) {
 const apiPort = process.env.API_PORT ?? "7070";
 const frontendPort = process.env.FRONTEND_PORT ?? "7075";
 const mobilePort = process.env.MOBILE_PORT ?? "8081";
-const useHttps = process.env.USE_HTTPS === "true";
 // The Expo dev server is opt-in: most backend work does not need it, and it
 // pulls in a Metro bundler that is slow to boot.
 const startMobile = process.env.START_MOBILE === "true";
 const children = [];
 let stopping = false;
 
-function run(packageDirectory, env) {
+function localNetworkAddress() {
+  const candidates = Object.values(networkInterfaces()).flat();
+  return (
+    candidates.find(
+      (address) =>
+        address?.family === "IPv4" &&
+        !address.internal &&
+        /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(address.address),
+    )?.address ??
+    candidates.find(
+      (address) => address?.family === "IPv4" && !address.internal,
+    )?.address ??
+    "localhost"
+  );
+}
+
+function run(packageDirectory, env, script = "dev") {
   const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
-  const child = spawn(npmCommand, ["--prefix", packageDirectory, "run", "dev"], {
+  const child = spawn(npmCommand, ["--prefix", packageDirectory, "run", script], {
     stdio: "inherit",
     env: { ...process.env, ...env },
     // Give each service its own process group so PM2/restart cleanup also
@@ -58,29 +74,46 @@ function stop(signal = "SIGTERM") {
 const api = run("artifacts/api-server", {
   PORT: apiPort,
   APP_ROOT: process.cwd(),
+  // This script is the local development launcher. Production starts the
+  // already-built API directly and may enable HTTPS there.
+  NODE_ENV: "development",
+  USE_HTTPS: "false",
 });
 
 const frontend = run("artifacts/fieldforce-admin", {
   PORT: frontendPort,
   APP_ROOT: process.cwd(),
+  NODE_ENV: "development",
+  USE_HTTPS: "false",
   BASE_PATH: process.env.BASE_PATH ?? "/",
   API_PROXY_TARGET:
-    process.env.API_PROXY_TARGET ??
-    `${useHttps ? "https" : "http"}://localhost:${apiPort}`,
+    process.env.API_PROXY_TARGET ?? `http://localhost:${apiPort}`,
   API_PROXY_SECURE:
     process.env.API_PROXY_SECURE ?? "false",
+  MOBILE_PORT: mobilePort,
+  VITE_MOBILE_APP_URL:
+    process.env.VITE_MOBILE_APP_URL ??
+    `exp://${localNetworkAddress()}:${mobilePort}`,
 });
 
 // Expo needs an absolute origin for /api/* because the mobile bundle is served
 // from the Metro port, not behind the admin panel's dev proxy.
 const mobile = startMobile
-  ? run("artifacts/fieldforce-mobile", {
-      PORT: mobilePort,
-      APP_ROOT: process.cwd(),
-      EXPO_PUBLIC_API_URL:
-        process.env.EXPO_PUBLIC_API_URL ??
-        `${useHttps ? "https" : "http"}://localhost:${apiPort}`,
-    })
+  ? run(
+      "artifacts/fieldforce-mobile",
+      {
+        PORT: mobilePort,
+        APP_ROOT: process.cwd(),
+        NODE_ENV: "development",
+        EXPO_PUBLIC_API_PORT: apiPort,
+        // Local LAN mode derives Metro's host and uses HTTP. MOBILE_API_URL is
+        // an explicit opt-in for tunnel/live testing; it deliberately avoids
+        // inheriting the production URL from the root .env by accident.
+        EXPO_PUBLIC_API_URL: process.env.MOBILE_API_URL ?? "",
+        EXPO_PUBLIC_DOMAIN: "",
+      },
+      process.env.MOBILE_TUNNEL === "true" ? "dev:tunnel" : "dev",
+    )
   : null;
 
 for (const signal of ["SIGINT", "SIGTERM"]) {
