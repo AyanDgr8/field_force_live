@@ -24,6 +24,9 @@ const mobilePort = process.env.MOBILE_PORT ?? "8081";
 // The Expo dev server is opt-in: most backend work does not need it, and it
 // pulls in a Metro bundler that is slow to boot.
 const startMobile = process.env.START_MOBILE === "true";
+// A tunnel makes the development bundle reachable from mobile data and other
+// networks. Set MOBILE_TUNNEL=false only when deliberately testing over LAN.
+const mobileTunnel = process.env.MOBILE_TUNNEL !== "false";
 const children = [];
 let stopping = false;
 
@@ -147,13 +150,14 @@ const mobile = startMobile
         EXPO_PUBLIC_API_PORT: apiPort,
         // Always inject a phone-reachable API origin. A physical device treats
         // localhost/127.0.0.1 as itself, not as the development computer.
-        // MOBILE_API_URL remains the explicit override for tunnel/live testing.
+        // Tunnel mode also needs a public API: Expo tunnels Metro, not port 7070.
         EXPO_PUBLIC_API_URL:
           process.env.MOBILE_API_URL ??
+          (mobileTunnel ? process.env.APP_URL : undefined) ??
           `http://${localNetworkAddress()}:${apiPort}`,
         EXPO_PUBLIC_DOMAIN: "",
       },
-      process.env.MOBILE_TUNNEL === "true" ? "dev:tunnel" : "dev",
+      mobileTunnel ? "dev:tunnel" : "dev:lan",
     )
   : null;
 

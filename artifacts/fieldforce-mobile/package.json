@@ -4,7 +4,7 @@
   "private": true,
   "main": "expo-router/entry",
   "scripts": {
-    "dev": "pnpm exec expo start --port ${PORT:-8081}",
+    "dev": "node scripts/start-tunnel.mjs",
     "dev:lan": "pnpm exec expo start --port ${PORT:-8081} --lan",
     "dev:tunnel": "node scripts/start-tunnel.mjs",
     "dev:web": "pnpm exec expo start --port ${PORT:-8081} --web",

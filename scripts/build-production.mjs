@@ -17,15 +17,28 @@ const productionEnv = {
   USE_HTTPS: 'false',
 };
 
-for (const [label, args] of [
-  ['type-check', ['run', 'typecheck']],
-  ['API build', ['--filter', '@workspace/api-server', 'build']],
-  ['admin build', ['--filter', '@workspace/fieldforce-admin', 'build']],
+const deploymentDomain =
+  process.env.EXPO_PUBLIC_DOMAIN ||
+  (process.env.APP_URL
+    ? new URL(process.env.APP_URL).host
+    : 'mwmcrm.voicemeetme.net');
+
+const mobileProductionEnv = {
+  ...productionEnv,
+  BASE_PATH: '/mobile-app',
+  EXPO_PUBLIC_DOMAIN: deploymentDomain,
+};
+
+for (const [label, args, env = productionEnv] of [
+  ['type-check', ['run', 'typecheck'], productionEnv],
+  ['API build', ['--filter', '@workspace/api-server', 'build'], productionEnv],
+  ['admin build', ['--filter', '@workspace/fieldforce-admin', 'build'], productionEnv],
+  ['mobile build', ['--filter', '@workspace/fieldforce-mobile', 'build'], mobileProductionEnv],
 ]) {
   console.log(`\n==> ${label}`);
   const result = spawnSync(pnpm, args, {
     stdio: 'inherit',
-    env: productionEnv,
+    env,
   });
   if (result.status !== 0) process.exit(result.status ?? 1);
 }
@@ -33,3 +46,4 @@ for (const [label, args] of [
 console.log('\nProduction build complete:');
 console.log('  API:   artifacts/api-server/dist/index.mjs');
 console.log('  Admin: artifacts/fieldforce-admin/dist/public');
+console.log('  Mobile: artifacts/fieldforce-mobile/static-build');

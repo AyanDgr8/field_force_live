@@ -22,6 +22,7 @@ if (Number.isNaN(port) || port <= 0) {
 
 const basePath = process.env.BASE_PATH;
 const apiProxyTarget = process.env.API_PROXY_TARGET;
+const mobileAppProxyTarget = process.env.MOBILE_APP_PROXY_TARGET;
 const useHttps = process.env.USE_HTTPS === 'true';
 const appRoot = process.env.APP_ROOT ?? process.cwd();
 const mobilePort = process.env.MOBILE_PORT ?? '8081';
@@ -112,6 +113,15 @@ const apiProxy = apiProxyTarget
     }
   : undefined;
 
+const mobileAppProxy = mobileAppProxyTarget
+  ? {
+      '/mobile-app': {
+        target: mobileAppProxyTarget,
+        changeOrigin: false,
+      },
+    }
+  : undefined;
+
 if (!basePath) {
   throw new Error(
     'BASE_PATH environment variable is required but was not provided.',
@@ -172,6 +182,8 @@ export default defineConfig({
     host: '0.0.0.0',
     allowedHosts,
     https,
-    ...(apiProxy ? { proxy: apiProxy } : {}),
+    ...(apiProxy || mobileAppProxy
+      ? { proxy: { ...apiProxy, ...mobileAppProxy } }
+      : {}),
   },
 });

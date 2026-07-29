@@ -8,7 +8,7 @@ const fallbackMobileAppUrl =
   import.meta.env.VITE_MOBILE_APP_URL ||
   (import.meta.env.DEV
     ? `exp://${window.location.hostname}:8081`
-    : 'https://mwmcrm.voicemeetme.net');
+    : `${window.location.origin}/mobile-app`);
 
 export default function MobileAppQrCode() {
   const [copied, setCopied] = useState(false);
@@ -39,7 +39,21 @@ export default function MobileAppQrCode() {
     };
   }, []);
 
-  const isTunnel = mobileAppUrl.includes('.exp.direct');
+  const isInternetReachable = (() => {
+    try {
+      const hostname = new URL(mobileAppUrl).hostname;
+      return !(
+        hostname === 'localhost' ||
+        hostname === '127.0.0.1' ||
+        hostname === '::1' ||
+        hostname.startsWith('10.') ||
+        hostname.startsWith('192.168.') ||
+        /^172\.(1[6-9]|2\d|3[01])\./.test(hostname)
+      );
+    } catch {
+      return false;
+    }
+  })();
 
   const copyUrl = async () => {
     await navigator.clipboard.writeText(mobileAppUrl);
@@ -71,10 +85,12 @@ export default function MobileAppQrCode() {
           <div className="flex items-start gap-3 rounded-lg border bg-muted/20 p-4 text-sm">
             <Smartphone className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
             <div>
-              <p className="font-medium">Local development</p>
+              <p className="font-medium">
+                {isInternetReachable ? 'Internet tunnel active' : 'Local development'}
+              </p>
               <p className="mt-1 text-muted-foreground">
-                {isTunnel
-                  ? 'Expo tunnel detected. This is the same QR target shown in the terminal.'
+                {isInternetReachable
+                  ? 'The phone can open this app from any internet network. Keep the development server running.'
                   : 'LAN mode detected. Keep the phone and computer on the same network.'}
               </p>
             </div>
