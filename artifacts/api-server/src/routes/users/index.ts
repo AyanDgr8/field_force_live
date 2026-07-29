@@ -38,7 +38,8 @@ import {
 } from "@workspace/api-zod";
 import { requireAuth } from "../../middlewares/auth.js";
 import { randomDelhiNcrCoord } from "../../lib/geo.js";
-import { sendPasswordChangedEmail } from "../../lib/mailer.js";
+import { sendPasswordChangedEmail, sendWelcomeEmail } from "../../lib/mailer.js";
+import { DEFAULT_USER_PASSWORD, loginUrl, passwordResetRequestUrl } from "../../lib/accounts.js";
 
 const router: IRouter = Router();
 
@@ -56,9 +57,9 @@ router.get("/users", requireAuth, async (req, res): Promise<void> => {
   });
   if (!adminUser) { res.status(401).json({ error: "Admin not found" }); return; }
 
-  let query = db.select().from(usersTable).where(eq(usersTable.customerId, adminUser.customerId)).$dynamic();
-
-  const conditions = [eq(usersTable.customerId, adminUser.customerId)];
+  // Deleted accounts are removed outright, so `deletedAt` is only ever set on
+  // rows tombstoned by the old soft-delete — they must not surface in the list.
+  const conditions = [eq(usersTable.customerId, adminUser.customerId), isNull(usersTable.deletedAt)];
   if (q.data.role) conditions.push(eq(usersTable.role, q.data.role));
   if (q.data.status) conditions.push(eq(usersTable.status, q.data.status));
 
@@ -126,9 +127,7 @@ router.post("/users", requireAuth, async (req, res): Promise<void> => {
 
   let onboardingInvite = null;
   if (user.role === "USER") {
-    // Create credentials (stub password)
-    const tempPassword = uuidv4().slice(0, 12);
-    const passwordHash = await bcrypt.hash(tempPassword, 10);
+    const passwordHash = await bcrypt.hash(DEFAULT_USER_PASSWORD, 10);
     await db.insert(credentialsTable).values({
       userId: user.id,
       username: user.employeeCode,
@@ -143,6 +142,25 @@ router.post("/users", requireAuth, async (req, res): Promise<void> => {
       channel: "EMAIL",
       deepLink: `/onboarding/${token}`,
     });
+  }
+
+  // Only accounts that actually got credentials above can sign in, so only
+  // those are worth welcoming. The user row is already committed, so a mail
+  // failure is logged rather than surfaced as a failed creation.
+  if (user.role === "USER") {
+    try {
+      await sendWelcomeEmail({
+        to: user.email,
+        recipientName: user.firstName,
+        loginEmail: user.email,
+        password: DEFAULT_USER_PASSWORD,
+        loginUrl: loginUrl(),
+        resetUrl: passwordResetRequestUrl(),
+        role: "Field Agent",
+      });
+    } catch (error) {
+      req.log.error({ err: error, userId: user.id }, "Failed to send welcome email");
+    }
   }
 
   res.status(201).json(CreateUserResponse.parse({ user, onboardingInvite }));

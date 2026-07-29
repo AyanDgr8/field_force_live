@@ -1,9 +1,38 @@
 import { useEffect } from 'react';
 import { useLocation, Link } from 'wouter';
+import { useQuery } from '@tanstack/react-query';
 import { useGetMe, useLogout } from '@workspace/api-client-react';
-import { Loader2, Map, Users, AlertTriangle, Settings, LogOut, Activity, CalendarDays, Cpu, Link2, QrCode } from 'lucide-react';
+import { Loader2, Map, Users, AlertTriangle, Settings, LogOut, Activity, CalendarDays, Cpu, Link2, QrCode, RadioTower, Warehouse, Crown, MapPinned, UserCog, Bike, FileCheck2, PackageCheck, ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { Button } from '@/components/ui/button';
+import { ToastAction } from '@/components/ui/toast';
+import { useToast } from '@/hooks/use-toast';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+
+const BASE = import.meta.env.BASE_URL.replace(/\/$/, '');
+
+type ActiveEmergencyAlert = {
+  id: number;
+  userId: number;
+  firstName: string;
+  lastName: string;
+  employeeCode: string;
+  message: string;
+  direction: 'USER_TO_ADMIN' | 'ADMIN_TO_USER';
+  triggeredAt: string;
+};
+
+async function fetchActiveAlerts(): Promise<ActiveEmergencyAlert[]> {
+  const response = await fetch(`${BASE}/api/live/alerts`, { credentials: 'include', cache: 'no-store' });
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  return response.json();
+}
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   const [, setLocation] = useLocation();
@@ -28,14 +57,18 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
+      <EmergencyAlertNotifier adminId={user.id} />
       {/* Sidebar */}
-      <aside className="w-64 bg-sidebar border-r border-sidebar-border flex flex-col">
-        <div className="h-16 flex items-center px-6 border-b border-sidebar-border">
+      <aside className="w-64 bg-sidebar border-r border-sidebar-border flex flex-col shadow-2xl shadow-slate-950/15 z-20">
+        <div className="h-[72px] flex items-center px-5 border-b border-sidebar-border">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-accent rounded-md flex items-center justify-center">
+            <div className="w-9 h-9 bg-accent rounded-xl flex items-center justify-center shadow-lg shadow-amber-500/20 ring-1 ring-white/15">
               <Activity className="w-5 h-5 text-accent-foreground" />
             </div>
-            <span className="font-bold text-sidebar-foreground tracking-tight">FieldForce Live</span>
+            <div>
+              <span className="block font-bold text-sidebar-foreground tracking-tight">FieldForce Live</span>
+              <span className="block text-[9px] font-semibold uppercase tracking-[0.18em] text-sidebar-foreground/40">Command center</span>
+            </div>
           </div>
         </div>
 
@@ -43,40 +76,81 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           <p className="px-3 text-[10px] font-semibold uppercase tracking-widest text-sidebar-foreground/40 mb-1 mt-1">Operations</p>
           <NavItem href="/" icon={<Map className="w-5 h-5" />} label="Live Map" />
           <NavItem href="/users" icon={<Users className="w-5 h-5" />} label="Fleet & Users" />
+          {user.role === 'SUPER_ADMIN' && <NavItem href="/super-admins" icon={<Crown className="w-5 h-5" />} label="Super Admins" />}
+          {['SUPER_ADMIN'].includes(user.role) && <NavItem href="/state-admins" icon={<MapPinned className="w-5 h-5" />} label="State Admins" />}
+          {['SUPER_ADMIN', 'STATE_ADMIN'].includes(user.role) && <NavItem href="/hub-admins" icon={<UserCog className="w-5 h-5" />} label="Hub Admins" />}
+          <NavItem href="/bikers" icon={<Bike className="w-5 h-5" />} label="Bikers" />
           <NavItem href="/attendance" icon={<CalendarDays className="w-5 h-5" />} label="Attendance" />
           <NavItem href="/alerts" icon={<AlertTriangle className="w-5 h-5" />} label="Alerts" />
           <NavItem href="/qrcode" icon={<QrCode className="w-5 h-5" />} label="Mobile App QR" />
+          <NavItem href="/iot-operations" icon={<RadioTower className="w-5 h-5" />} label="IoT Operations" />
+          <NavItem href="/hub-configuration" icon={<Warehouse className="w-5 h-5" />} label="Hub Configuration" />
+          {user.role === 'SUPER_ADMIN' && <NavItem href="/state-configuration" icon={<MapPinned className="w-5 h-5" />} label="State Configuration" />}
+          <NavItem href="/vehicle-configuration" icon={<Bike className="w-5 h-5" />} label="Vehicle Configuration" />
+          <NavItem href="/background-verification" icon={<FileCheck2 className="w-5 h-5" />} label="Background Verification" />
+          <NavItem href="/delivery-imports" icon={<PackageCheck className="w-5 h-5" />} label="Delivery Imports" />
 
           <p className="px-3 text-[10px] font-semibold uppercase tracking-widest text-sidebar-foreground/40 mb-1 mt-3">GPS Devices</p>
           <NavItem href="/devices" icon={<Cpu className="w-5 h-5" />} label="Tracked Devices" />
           <NavItem href="/vendor-accounts" icon={<Link2 className="w-5 h-5" />} label="Vendor Accounts" />
         </div>
 
-        <div className="p-4 border-t border-sidebar-border space-y-2">
-          <div className="px-3 mb-2 flex flex-col">
-            <span className="text-sm font-medium text-sidebar-foreground truncate">{user.firstName} {user.lastName}</span>
-            <span className="text-xs text-sidebar-foreground/60 truncate">{user.customerName}</span>
-          </div>
-          <NavItem href="/settings" icon={<Settings className="w-5 h-5" />} label="Settings" />
-          <Button
-            variant="ghost"
-            className="w-full justify-start text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-sidebar-accent"
-            onClick={() => {
-              logoutMutation.mutate(undefined, {
-                onSuccess: () => setLocation('/login')
-              });
-            }}
-          >
-            <LogOut className="w-5 h-5 mr-3" />
-            Sign Out
-          </Button>
-        </div>
       </aside>
 
       {/* Main Content */}
       <main className="flex-1 flex flex-col overflow-hidden relative">
-        <div className="flex-1 overflow-y-auto bg-background p-6">
-          <div className="max-w-7xl mx-auto h-full">
+        <header className="h-[72px] shrink-0 border-b border-border bg-card/85 backdrop-blur-xl flex items-center justify-between px-6 z-10">
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">Operations workspace</p>
+            <p className="text-sm font-semibold text-foreground mt-0.5">Live field intelligence</p>
+          </div>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                type="button"
+                className="flex items-center gap-3 rounded-xl border border-border bg-background/70 px-3 py-2 text-left shadow-sm outline-none transition hover:border-foreground/45 hover:bg-card focus-visible:ring-4 focus-visible:ring-ring/15 data-[state=open]:border-foreground/45 data-[state=open]:bg-card"
+              >
+                <div className="h-8 w-8 rounded-lg bg-primary text-primary-foreground flex items-center justify-center text-xs font-bold">
+                  {user.firstName?.[0]}{user.lastName?.[0]}
+                </div>
+                <div className="leading-tight">
+                  <p className="text-sm font-semibold">{user.firstName} {user.lastName}</p>
+                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground">{user.role.replaceAll('_', ' ')}</p>
+                </div>
+                <span className="ml-1 h-2 w-2 rounded-full bg-emerald-500 ring-4 ring-emerald-500/10" title="Connected" />
+                <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform data-[state=open]:rotate-180" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" sideOffset={8} className="w-64 rounded-xl border-popover-border p-2 shadow-xl">
+              <DropdownMenuLabel className="px-3 py-2">
+                <span className="block text-sm font-semibold">{user.firstName} {user.lastName}</span>
+                <span className="mt-1 block text-xs font-normal text-muted-foreground">{user.customerName}</span>
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem asChild className="cursor-pointer rounded-lg px-3 py-2.5">
+                <Link href="/settings">
+                  <Settings className="h-4 w-4" />
+                  Settings
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                className="cursor-pointer rounded-lg px-3 py-2.5 text-destructive focus:bg-destructive/10 focus:text-destructive"
+                disabled={logoutMutation.isPending}
+                onSelect={() => {
+                  logoutMutation.mutate(undefined, {
+                    onSuccess: () => setLocation('/login'),
+                  });
+                }}
+              >
+                <LogOut className="h-4 w-4" />
+                {logoutMutation.isPending ? 'Signing out…' : 'Sign Out'}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </header>
+        <div className="flex-1 overflow-y-auto p-6 lg:p-8">
+          <div className="max-w-[1440px] mx-auto min-h-full">
             {children}
           </div>
         </div>
@@ -85,16 +159,58 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   );
 }
 
+function EmergencyAlertNotifier({ adminId }: { adminId: number }) {
+  const [, setLocation] = useLocation();
+  const { toast } = useToast();
+  const { data: alerts = [] } = useQuery({
+    queryKey: ['dashboard-active-emergency-alerts'],
+    queryFn: fetchActiveAlerts,
+    refetchInterval: 3_000,
+    staleTime: 0,
+  });
+
+  useEffect(() => {
+    if (alerts.length === 0) return;
+    const storageKey = `fieldforce-notified-alerts-${adminId}`;
+    let seen = new Set<number>();
+    try {
+      const stored = JSON.parse(window.sessionStorage.getItem(storageKey) ?? '[]');
+      if (Array.isArray(stored)) seen = new Set(stored.filter(Number.isInteger));
+    } catch {
+      // A malformed browser value should never suppress a real emergency.
+    }
+    const unseen = alerts.filter(alert => !seen.has(alert.id));
+    if (unseen.length === 0) return;
+
+    unseen.forEach(alert => seen.add(alert.id));
+    window.sessionStorage.setItem(storageKey, JSON.stringify([...seen].slice(-200)));
+    const latest = unseen[0];
+    toast({
+      variant: 'destructive',
+      duration: 15_000,
+      title: unseen.length > 1 ? `${unseen.length} new emergency alerts` : 'Emergency alert',
+      description: `${latest.firstName} ${latest.lastName} (${latest.employeeCode}): ${latest.message}`,
+      action: (
+        <ToastAction altText="View emergency alerts" onClick={() => setLocation('/alerts')}>
+          View alerts
+        </ToastAction>
+      ),
+    });
+  }, [adminId, alerts, setLocation, toast]);
+
+  return null;
+}
+
 function NavItem({ href, icon, label }: { href: string; icon: React.ReactNode; label: string }) {
   const [location] = useLocation();
   const isActive = location === href || (href !== '/' && location.startsWith(href));
 
   return (
     <Link href={href} className={cn(
-      "flex items-center gap-3 px-3 py-2 rounded-md transition-colors text-sm font-medium",
+      "group flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-150 text-sm font-medium border",
       isActive
-        ? "bg-sidebar-primary text-sidebar-primary-foreground"
-        : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+        ? "bg-sidebar-primary text-sidebar-primary-foreground border-amber-300/50 shadow-lg shadow-black/15"
+        : "text-sidebar-foreground/70 border-transparent hover:bg-sidebar-accent hover:text-sidebar-foreground hover:border-sidebar-border hover:translate-x-0.5"
     )}>
       {icon}
       {label}

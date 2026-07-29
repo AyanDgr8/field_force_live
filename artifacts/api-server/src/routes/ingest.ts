@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
-import { eq, and, isNull, desc } from "drizzle-orm";
+import { eq, and, isNull, desc, inArray } from "drizzle-orm";
 import { db, insertReturning, updateReturning } from "@workspace/db";
-import { sessionsTable, dayPlansTable, visitStopsTable } from "@workspace/db";
+import { sessionsTable, dayPlansTable, visitStopsTable, usersTable } from "@workspace/db";
 import {
   IngestLocationBody,
   IngestLocationResponse,
@@ -18,6 +18,22 @@ const router: IRouter = Router();
 router.post("/ingest/location", async (req, res): Promise<void> => {
   const parsed = IngestLocationBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
+  const requestedUserIds = [...new Set(parsed.data.pings.map(ping => ping.userId))];
+  const users = requestedUserIds.length
+    ? await db.select().from(usersTable).where(inArray(usersTable.id, requestedUserIds))
+    : [];
+  const missingUserIds = requestedUserIds.filter(id => !users.some(user => user.id === id));
+  if (missingUserIds.length) {
+    res.status(401).json({
+      error: "Location data belongs to a rider account that no longer exists. Sign in again.",
+      code: "STALE_MOBILE_SESSION",
+    });
+    return;
+  }
+  if (users.some(user => user.role !== "USER" || user.status !== "ACTIVE")) {
+    res.status(403).json({ error: "Location tracking requires an active rider account." });
+    return;
+  }
 
   const inserted = await ingestPings(
     parsed.data.pings.map(p => ({
@@ -40,6 +56,18 @@ router.post("/ingest/session", async (req, res): Promise<void> => {
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
 
   const { userId, event, latitude, longitude, at } = parsed.data;
+  const [user] = await db.select().from(usersTable).where(eq(usersTable.id, userId)).limit(1);
+  if (!user) {
+    res.status(401).json({
+      error: "This rider account no longer exists. Sign in again.",
+      code: "STALE_MOBILE_SESSION",
+    });
+    return;
+  }
+  if (user.role !== "USER" || user.status !== "ACTIVE") {
+    res.status(403).json({ error: "Session tracking requires an active rider account." });
+    return;
+  }
 
   if (event === "LOGIN") {
     const session = await insertReturning(sessionsTable, {

@@ -4,7 +4,7 @@ import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 import { customersTable } from "./customers";
 
-export const userRoleValues = ["ADMIN", "USER"] as const;
+export const userRoleValues = ["SUPER_ADMIN", "STATE_ADMIN", "HUB_ADMIN", "USER"] as const;
 export const userStatusValues = ["INVITED", "ACTIVE", "SUSPENDED"] as const;
 export const genderValues = ["MALE", "FEMALE", "OTHER"] as const;
 export const addressTypeValues = ["OFFICE", "BASE_OFFICE", "SITE_OFFICE", "HOME"] as const;
@@ -20,9 +20,15 @@ export const usersTable = mysqlTable("users", {
   phoneNumber: text("phone_number").notNull(),
   email: text("email").notNull(),
   role: mysqlEnum("role", userRoleValues).notNull(),
+  parentUserId: int("parent_user_id"),
+  stateId: int("state_id"),
+  hubId: int("hub_id"),
+  vehicleId: int("vehicle_id"),
+  flipkartId: varchar("flipkart_id", { length: 64 }),
   status: mysqlEnum("status", userStatusValues).notNull().default("INVITED"),
   consentGivenAt: datetime("consent_given_at", { mode: "date", fsp: 3 }),
   createdAt: datetime("created_at", { mode: "date", fsp: 3 }).notNull().default(sql`(now(3))`),
+  deletedAt: datetime("deleted_at", { mode: "date", fsp: 3 }),
   liveStatus: mysqlEnum("live_status", liveStatusValues).notNull().default("OFFLINE"),
   liveStatusSince: datetime("live_status_since", { mode: "date", fsp: 3 }),
   emergencyActive: boolean("emergency_active").notNull().default(false),

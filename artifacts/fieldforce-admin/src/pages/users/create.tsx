@@ -26,7 +26,7 @@ const userSchema = z.object({
   employeeCode: z.string().min(2),
   phoneNumber: z.string().min(10),
   email: z.string().email(),
-  role: z.enum(['USER', 'ADMIN']),
+  role: z.enum(['USER', 'SUPER_ADMIN', 'STATE_ADMIN', 'HUB_ADMIN']),
   addresses: z.array(addressSchema).min(1, "At least one address is required"),
 });
 
@@ -180,7 +180,9 @@ export default function UserCreate() {
                       <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
                       <SelectContent>
                         <SelectItem value="USER">Field Agent</SelectItem>
-                        <SelectItem value="ADMIN">Administrator</SelectItem>
+                        <SelectItem value="SUPER_ADMIN">Super Admin</SelectItem>
+                        <SelectItem value="STATE_ADMIN">State Admin</SelectItem>
+                        <SelectItem value="HUB_ADMIN">Hub Admin</SelectItem>
                       </SelectContent>
                     </Select>
                     <FormMessage />

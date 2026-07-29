@@ -35,6 +35,13 @@ function utcDayRange(dateStr: string): { start: Date; end: Date } {
   return { start, end: new Date(start.getTime() + 24 * 60 * 60 * 1000) };
 }
 
+function normalizeDateQuery(value: unknown): unknown {
+  if (typeof value !== "string") return value;
+  // Date-only query parameters must be parsed explicitly. z.date() accepts
+  // Date instances, while Express always supplies query values as strings.
+  return new Date(`${value}T00:00:00.000Z`);
+}
+
 // GET /sessions?userId=&from=&to=
 router.get("/sessions", requireAuth, async (req, res): Promise<void> => {
   const q = ListUserSessionsQueryParams.safeParse(req.query);
@@ -50,7 +57,11 @@ router.get("/sessions", requireAuth, async (req, res): Promise<void> => {
 
   const conditions = [eq(sessionsTable.userId, q.data.userId)];
   if (q.data.from) conditions.push(gte(sessionsTable.loginAt, q.data.from));
-  if (q.data.to) conditions.push(lte(sessionsTable.loginAt, q.data.to));
+  if (q.data.to) {
+    const toExclusive = new Date(q.data.to);
+    toExclusive.setUTCDate(toExclusive.getUTCDate() + 1);
+    conditions.push(lt(sessionsTable.loginAt, toExclusive));
+  }
 
   const sessions = await db.select().from(sessionsTable)
     .where(and(...conditions))
@@ -157,7 +168,11 @@ router.get("/dwell-segments", requireAuth, async (req, res): Promise<void> => {
 
 // GET /attendance?userId=&from=&to=
 router.get("/attendance", requireAuth, async (req, res): Promise<void> => {
-  const q = GetUserAttendanceReportQueryParams.safeParse(req.query);
+  const q = GetUserAttendanceReportQueryParams.safeParse({
+    ...req.query,
+    from: normalizeDateQuery(req.query.from),
+    to: normalizeDateQuery(req.query.to),
+  });
   if (!q.success) { res.status(400).json({ error: q.error.message }); return; }
 
   const customerId = await getAdminCustomerId(req.adminUserId!);
@@ -169,7 +184,11 @@ router.get("/attendance", requireAuth, async (req, res): Promise<void> => {
 
   const conditions = [eq(sessionsTable.userId, q.data.userId)];
   if (q.data.from) conditions.push(gte(sessionsTable.loginAt, q.data.from));
-  if (q.data.to) conditions.push(lte(sessionsTable.loginAt, q.data.to));
+  if (q.data.to) {
+    const toExclusive = new Date(q.data.to);
+    toExclusive.setUTCDate(toExclusive.getUTCDate() + 1);
+    conditions.push(lt(sessionsTable.loginAt, toExclusive));
+  }
 
   const sessions = await db.select().from(sessionsTable)
     .where(and(...conditions))
@@ -210,7 +229,11 @@ router.get("/attendance/export", requireAuth, async (req, res): Promise<void> =>
   for (const u of users) {
     const conditions = [eq(sessionsTable.userId, u.id)];
     if (fromParam) conditions.push(gte(sessionsTable.loginAt, new Date(fromParam)));
-    if (toParam) conditions.push(lte(sessionsTable.loginAt, new Date(toParam)));
+    if (toParam) {
+      const toExclusive = new Date(`${toParam}T00:00:00.000Z`);
+      toExclusive.setUTCDate(toExclusive.getUTCDate() + 1);
+      conditions.push(lt(sessionsTable.loginAt, toExclusive));
+    }
 
     const sessions = await db.select().from(sessionsTable)
       .where(and(...conditions))

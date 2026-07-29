@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { networkInterfaces } from "node:os";
+import net from "node:net";
 
 if (existsSync(".env")) {
   process.loadEnvFile(".env");
@@ -25,6 +26,35 @@ const mobilePort = process.env.MOBILE_PORT ?? "8081";
 const startMobile = process.env.START_MOBILE === "true";
 const children = [];
 let stopping = false;
+
+function portOwner(port) {
+  if (process.platform === "win32") return "";
+  const result = spawnSync("lsof", ["-nP", `-iTCP:${port}`, "-sTCP:LISTEN", "-t"], {
+    encoding: "utf8",
+  });
+  const pid = result.stdout.trim().split(/\s+/)[0];
+  return pid ? ` (PID ${pid})` : "";
+}
+
+function assertPortAvailable(port, service) {
+  return new Promise((resolve, reject) => {
+    const probe = net.createServer();
+    probe.unref();
+    probe.once("error", (error) => {
+      if (error.code === "EADDRINUSE") {
+        reject(
+          new Error(
+            `${service} port ${port} is already in use${portOwner(port)}.\n` +
+            `Stop the old process with: kill $(lsof -tiTCP:${port} -sTCP:LISTEN)`,
+          ),
+        );
+      } else {
+        reject(error);
+      }
+    });
+    probe.listen(Number(port), "0.0.0.0", () => probe.close(resolve));
+  });
+}
 
 function localNetworkAddress() {
   const candidates = Object.values(networkInterfaces()).flat();
@@ -71,6 +101,15 @@ function stop(signal = "SIGTERM") {
   }
 }
 
+try {
+  await assertPortAvailable(apiPort, "API");
+  await assertPortAvailable(frontendPort, "Admin dashboard");
+  if (startMobile) await assertPortAvailable(mobilePort, "Expo");
+} catch (error) {
+  console.error(`\nCannot start FieldForce:\n${error.message}\n`);
+  process.exit(1);
+}
+
 const api = run("artifacts/api-server", {
   PORT: apiPort,
   APP_ROOT: process.cwd(),
@@ -106,10 +145,12 @@ const mobile = startMobile
         APP_ROOT: process.cwd(),
         NODE_ENV: "development",
         EXPO_PUBLIC_API_PORT: apiPort,
-        // Local LAN mode derives Metro's host and uses HTTP. MOBILE_API_URL is
-        // an explicit opt-in for tunnel/live testing; it deliberately avoids
-        // inheriting the production URL from the root .env by accident.
-        EXPO_PUBLIC_API_URL: process.env.MOBILE_API_URL ?? "",
+        // Always inject a phone-reachable API origin. A physical device treats
+        // localhost/127.0.0.1 as itself, not as the development computer.
+        // MOBILE_API_URL remains the explicit override for tunnel/live testing.
+        EXPO_PUBLIC_API_URL:
+          process.env.MOBILE_API_URL ??
+          `http://${localNetworkAddress()}:${apiPort}`,
         EXPO_PUBLIC_DOMAIN: "",
       },
       process.env.MOBILE_TUNNEL === "true" ? "dev:tunnel" : "dev",

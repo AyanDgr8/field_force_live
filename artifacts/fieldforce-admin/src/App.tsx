@@ -9,6 +9,7 @@ import Layout from '@/components/layout/Layout';
 
 // Pages
 import Login from '@/pages/login';
+import { ResetPasswordRequest, ResetPasswordConfirm } from '@/pages/reset-password';
 import Dashboard from '@/pages/dashboard';
 import UsersList from '@/pages/users/list';
 import UserCreate from '@/pages/users/create';
@@ -22,6 +23,16 @@ import PublicOnboarding from '@/pages/public/onboarding';
 import Devices from '@/pages/devices';
 import VendorAccounts from '@/pages/vendor-accounts';
 import MobileAppQrCode from '@/pages/qrcode';
+import IotOperations from '@/pages/iot-operations';
+import HubConfiguration from '@/pages/hub-configuration';
+import SuperAdmins from '@/pages/super-admins';
+import StateAdmins from '@/pages/state-admins';
+import HubAdmins from '@/pages/hub-admins';
+import Bikers from '@/pages/bikers';
+import StateConfiguration from '@/pages/state-configuration';
+import VehicleConfiguration from '@/pages/vehicle-configuration';
+import BackgroundVerification from '@/pages/background-verification';
+import DeliveryImports from '@/pages/delivery-imports';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -36,6 +47,8 @@ function AppRoutes() {
   return (
     <Switch>
       <Route path="/login" component={Login} />
+      <Route path="/reset-password" component={ResetPasswordRequest} />
+      <Route path="/reset-password/:id/:token" component={ResetPasswordConfirm} />
       <Route path="/track/:token" component={PublicTrack} />
       <Route path="/onboarding/:token" component={PublicOnboarding} />
       
@@ -54,6 +67,16 @@ function AppRoutes() {
             <Route path="/devices" component={Devices} />
             <Route path="/vendor-accounts" component={VendorAccounts} />
             <Route path="/qrcode" component={MobileAppQrCode} />
+            <Route path="/iot-operations" component={IotOperations} />
+            <Route path="/hub-configuration" component={HubConfiguration} />
+            <Route path="/super-admins" component={SuperAdmins} />
+            <Route path="/state-admins" component={StateAdmins} />
+            <Route path="/hub-admins" component={HubAdmins} />
+            <Route path="/bikers" component={Bikers} />
+            <Route path="/state-configuration" component={StateConfiguration} />
+            <Route path="/vehicle-configuration" component={VehicleConfiguration} />
+            <Route path="/background-verification" component={BackgroundVerification} />
+            <Route path="/delivery-imports" component={DeliveryImports} />
             <Route component={NotFound} />
           </Switch>
         </Layout>

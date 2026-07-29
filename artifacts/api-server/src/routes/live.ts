@@ -48,6 +48,35 @@ async function getAdminCustomerId(adminUserId: number): Promise<number | null> {
   return u?.customerId ?? null;
 }
 
+// GET /live/alerts — unacknowledged tenant alerts for dashboard notifications.
+router.get("/live/alerts", requireAuth, async (req, res): Promise<void> => {
+  const customerId = await getAdminCustomerId(req.adminUserId!);
+  if (!customerId) { res.status(401).json({ error: "Admin not found" }); return; }
+
+  const alerts = await db
+    .select({
+      id: emergencyAlertsTable.id,
+      userId: emergencyAlertsTable.userId,
+      firstName: usersTable.firstName,
+      lastName: usersTable.lastName,
+      employeeCode: usersTable.employeeCode,
+      message: emergencyAlertsTable.message,
+      direction: emergencyAlertsTable.direction,
+      triggeredAt: emergencyAlertsTable.triggeredAt,
+      lat: emergencyAlertsTable.lat,
+      lng: emergencyAlertsTable.lng,
+    })
+    .from(emergencyAlertsTable)
+    .innerJoin(usersTable, eq(usersTable.id, emergencyAlertsTable.userId))
+    .where(and(
+      eq(usersTable.customerId, customerId),
+      isNull(emergencyAlertsTable.acknowledgedAt),
+    ))
+    .orderBy(desc(emergencyAlertsTable.triggeredAt));
+
+  res.json(alerts);
+});
+
 // GET /live/summary
 router.get("/live/summary", requireAuth, async (req, res): Promise<void> => {
   const customerId = await getAdminCustomerId(req.adminUserId!);

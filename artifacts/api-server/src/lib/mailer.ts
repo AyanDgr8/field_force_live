@@ -24,6 +24,102 @@ export async function verifyEmailConnection(): Promise<void> {
   await transporter.verify();
 }
 
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+const SHELL_OPEN =
+  `<div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;background:#f4f6fb;padding:28px">` +
+  `<div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:14px;overflow:hidden;border:1px solid #e6e9f0">` +
+  `<div style="background:#07111f;padding:22px 28px">` +
+  `<span style="color:#fcd34d;font-size:18px;font-weight:800;letter-spacing:-0.4px">FieldForce Live</span>` +
+  `</div><div style="padding:28px">`;
+const SHELL_CLOSE = `</div></div></div>`;
+
+const BUTTON = (href: string, label: string) =>
+  `<a href="${escapeHtml(href)}" style="display:inline-block;background:#f59e0b;color:#07111f;font-weight:700;` +
+  `text-decoration:none;padding:12px 22px;border-radius:10px">${escapeHtml(label)}</a>`;
+
+/**
+ * Sent the moment an account is created. Carries the sign-in credentials, so
+ * the recipient can reach the dashboard without an administrator relaying them.
+ */
+export async function sendWelcomeEmail(options: {
+  to: string;
+  recipientName?: string;
+  loginEmail: string;
+  password: string;
+  loginUrl: string;
+  resetUrl: string;
+  role?: string;
+}): Promise<void> {
+  const greeting = options.recipientName ? `Hi ${options.recipientName},` : "Hello,";
+  const roleLine = options.role
+    ? `<p style="margin:0 0 18px;color:#475569">Your account has been set up with the <b>${escapeHtml(options.role)}</b> role.</p>`
+    : "";
+
+  await transporter.sendMail({
+    from: process.env.EMAIL_FROM ?? `Field Force Monitor <${required("EMAIL_USER")}>`,
+    to: options.to,
+    subject: "Welcome to FieldForce Live — your account is ready",
+    text:
+      `${greeting}\n\nYour FieldForce Live account is ready.\n\n` +
+      `Sign in at: ${options.loginUrl}\n` +
+      `Email: ${options.loginEmail}\n` +
+      `Temporary password: ${options.password}\n\n` +
+      `For your security, change this password after your first sign-in: ${options.resetUrl}\n`,
+    html:
+      SHELL_OPEN +
+      `<h2 style="margin:0 0 10px;font-size:22px;color:#0f172a">${escapeHtml(greeting)}</h2>` +
+      `<p style="margin:0 0 18px;color:#475569">Your FieldForce Live account is ready to use.</p>` +
+      roleLine +
+      `<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:18px;margin:0 0 22px">` +
+      `<p style="margin:0 0 10px;font-size:12px;text-transform:uppercase;letter-spacing:1px;color:#64748b">Your credentials</p>` +
+      `<p style="margin:0 0 6px;color:#0f172a">Email: <b>${escapeHtml(options.loginEmail)}</b></p>` +
+      `<p style="margin:0;color:#0f172a">Temporary password: <b style="font-family:monospace;font-size:16px">${escapeHtml(options.password)}</b></p>` +
+      `</div>` +
+      `<p style="margin:0 0 22px">${BUTTON(options.loginUrl, "Sign in to FieldForce")}</p>` +
+      `<p style="margin:0;color:#64748b;font-size:13px">This password is shared with everyone who joins, so please ` +
+      `<a href="${escapeHtml(options.resetUrl)}" style="color:#b45309">change it</a> right after your first sign-in.</p>` +
+      SHELL_CLOSE,
+  });
+}
+
+/**
+ * Password reset for the admin dashboard. Unlike the mobile flow (6-digit
+ * code), this sends a one-time link that opens the reset form directly.
+ */
+export async function sendPasswordResetLinkEmail(options: {
+  to: string;
+  resetUrl: string;
+  recipientName?: string;
+  expiresInMinutes: number;
+}): Promise<void> {
+  const greeting = options.recipientName ? `Hi ${options.recipientName},` : "Hello,";
+
+  await transporter.sendMail({
+    from: process.env.EMAIL_FROM ?? `Field Force Monitor <${required("EMAIL_USER")}>`,
+    to: options.to,
+    subject: "Reset your FieldForce password",
+    text:
+      `${greeting}\n\nUse this link to choose a new FieldForce password:\n${options.resetUrl}\n\n` +
+      `The link expires in ${options.expiresInMinutes} minutes and can only be used once.\n\n` +
+      `If you did not request a password reset, ignore this email and your password stays unchanged.`,
+    html:
+      SHELL_OPEN +
+      `<h2 style="margin:0 0 10px;font-size:22px;color:#0f172a">${escapeHtml(greeting)}</h2>` +
+      `<p style="margin:0 0 22px;color:#475569">Use the button below to choose a new FieldForce password.</p>` +
+      `<p style="margin:0 0 22px">${BUTTON(options.resetUrl, "Set a new password")}</p>` +
+      `<p style="margin:0 0 8px;color:#64748b;font-size:13px">The link expires in ${options.expiresInMinutes} minutes and can only be used once.</p>` +
+      `<p style="margin:0;color:#64748b;font-size:13px">If you did not request this, ignore this email — your password stays unchanged.</p>` +
+      SHELL_CLOSE,
+  });
+}
+
 export async function sendLoginOtpEmail(options: {
   to: string;
   code: string;

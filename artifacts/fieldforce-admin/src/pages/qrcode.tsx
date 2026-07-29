@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
-import { Check, Copy, ExternalLink, QrCode, Smartphone } from 'lucide-react';
+import { Check, Copy, ExternalLink, Smartphone } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 
@@ -48,12 +48,9 @@ export default function MobileAppQrCode() {
   };
 
   return (
-    <div className="mx-auto flex min-h-full max-w-3xl items-center justify-center py-8">
+    <div className="mx-auto flex min-h-full max-w-3xl items-start justify-center pt-2 pb-8">
       <Card className="w-full overflow-hidden shadow-sm">
         <CardHeader className="border-b bg-muted/20 text-center">
-          <div className="mx-auto mb-2 flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary">
-            <QrCode className="h-6 w-6" />
-          </div>
           <CardTitle className="text-2xl">FieldForce Mobile App</CardTitle>
           <CardDescription>
             Scan this QR code with your phone to open the agent app.

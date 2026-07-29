@@ -6,7 +6,8 @@ import React, {
   useState,
 } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { apiPost, setApiToken } from '@/lib/api';
+import { apiPost, setApiToken, setUnauthorizedHandler } from '@/lib/api';
+import { clearQueue } from '@/lib/offlineQueue';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -17,7 +18,7 @@ export interface MobileUser {
   email: string;
   employeeCode: string;
   customerId: number;
-  role: 'ADMIN' | 'USER';
+  role: 'SUPER_ADMIN' | 'STATE_ADMIN' | 'HUB_ADMIN' | 'USER';
 }
 
 interface AuthState {
@@ -83,9 +84,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = useCallback(async () => {
     setApiToken(null);
+    await clearQueue();
     await AsyncStorage.multiRemove([TOKEN_KEY, USER_KEY]);
     setState({ token: null, user: null, loading: false });
   }, []);
+
+  useEffect(() => {
+    setUnauthorizedHandler(() => {
+      void logout();
+    });
+    return () => setUnauthorizedHandler(null);
+  }, [logout]);
 
   return (
     <AuthContext.Provider value={{ ...state, login, logout }}>

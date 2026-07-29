@@ -9,11 +9,13 @@ const colors = {
     text: '#0f1b35',
     tint: '#f99207',
 
-    background: '#f3f5f8',       // hsl(216, 20%, 97%)
+    background: '#eef2f7',
     foreground: '#0f1b35',       // hsl(222, 47%, 11%) deep navy
 
     card: '#ffffff',
     cardForeground: '#0f1b35',
+    surfaceElevated: '#ffffff',
+    surfaceMuted: '#e8edf4',
 
     primary: '#f99207',          // hsl(32, 98%, 52%) vibrant amber — action color
     primaryForeground: '#ffffff',
@@ -30,8 +32,8 @@ const colors = {
     destructive: '#f04747',      // hsl(0, 84.2%, 60.2%)
     destructiveForeground: '#ffffff',
 
-    border: '#dce4ef',           // hsl(214.3, 31.8%, 91.4%)
-    input: '#dce4ef',
+    border: '#8e9db2',
+    input: '#7f90a8',
 
     // Extended brand tokens
     navy: '#0f1b35',             // deep navy — header/sidebar backgrounds
@@ -71,8 +73,11 @@ const colors = {
     destructive: '#ef4444',
     destructiveForeground: '#ffffff',
 
-    border: '#1e2d4a',
-    input: '#1e2d4a',
+    surfaceElevated: '#182744',
+    surfaceMuted: '#1b2b49',
+
+    border: '#53647f',
+    input: '#657792',
 
     navy: '#0f1b35',
     navyMid: '#1a2d50',
@@ -85,7 +90,7 @@ const colors = {
     neutral: '#64748b',
   },
 
-  radius: 12,
+  radius: 16,
 };
 
 export default colors;

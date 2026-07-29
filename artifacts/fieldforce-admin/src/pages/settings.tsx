@@ -121,7 +121,7 @@ export default function Settings() {
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      {u.role === 'ADMIN'
+                      {u.role !== 'USER'
                         ? <Badge variant="secondary" className="bg-amber-50 text-amber-700 gap-1"><Shield className="w-3 h-3" /> Admin</Badge>
                         : <Badge variant="secondary" className="bg-blue-50 text-blue-700 gap-1"><UserCircle className="w-3 h-3" /> Agent</Badge>
                       }

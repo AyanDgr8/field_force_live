@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect } from 'react';
+import React, { useCallback } from 'react';
 import {
   Alert,
   Platform,
@@ -21,13 +21,6 @@ export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const { user, logout } = useAuth();
   const { permissionGranted, requestPermission, getCoords, pendingSync } = useLocation();
-
-  // Request location permission if not granted
-  useEffect(() => {
-    if (!permissionGranted) {
-      requestPermission();
-    }
-  }, [permissionGranted, requestPermission]);
 
   const handleLogout = useCallback(() => {
     Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
@@ -217,10 +210,15 @@ const s = StyleSheet.create({
   },
   card: {
     marginHorizontal: 16,
-    borderWidth: 1,
-    borderRadius: 14,
-    padding: 16,
-    gap: 12,
+    borderWidth: 1.5,
+    borderRadius: 18,
+    padding: 18,
+    gap: 14,
+    shadowColor: '#0f1b35',
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    elevation: 4,
   },
   sectionLabel: {
     fontSize: 11,

@@ -9,9 +9,14 @@ import Constants from 'expo-constants';
  */
 
 let _token: string | null = null;
+let _onUnauthorized: (() => void) | null = null;
 
 export function setApiToken(t: string | null) {
   _token = t;
+}
+
+export function setUnauthorizedHandler(handler: (() => void) | null) {
+  _onUnauthorized = handler;
 }
 
 /**
@@ -27,7 +32,20 @@ export function setApiToken(t: string | null) {
  */
 export function baseUrl(): string {
   const explicit = process.env.EXPO_PUBLIC_API_URL;
-  if (explicit) return explicit.replace(/\/+$/, '');
+  if (explicit) {
+    const normalized = explicit.replace(/\/+$/, '');
+    // This warning is intentionally visible in Metro: it immediately explains
+    // the most common physical-device connection mistake.
+    if (
+      __DEV__ &&
+      /:\/\/(localhost|127\.0\.0\.1)(?::|\/|$)/.test(normalized)
+    ) {
+      console.warn(
+        'FieldForce API uses a loopback address. A physical phone needs the computer LAN IP or a public tunnel URL.',
+      );
+    }
+    return normalized;
+  }
 
   const domain = process.env.EXPO_PUBLIC_DOMAIN;
   if (domain) return `https://${domain.replace(/\/+$/, '')}`;
@@ -82,6 +100,9 @@ async function handleResponse<T>(res: Response): Promise<T> {
       message = body?.error ?? body?.message ?? message;
     } catch {
       // ignore parse error
+    }
+    if (res.status === 401 && _token) {
+      _onUnauthorized?.();
     }
     throw new ApiError(message, res.status);
   }

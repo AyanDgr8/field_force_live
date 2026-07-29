@@ -1,5 +1,7 @@
-import { useEffect, useRef, useCallback, useState } from 'react';
-import { GoogleMap, useJsApiLoader, OverlayView } from '@react-google-maps/api';
+import { useEffect, useRef, useCallback, useMemo, useState } from 'react';
+import { GoogleMap, OverlayView } from '@react-google-maps/api';
+import { GOOGLE_MAPS_API_KEY, useGoogleMaps } from '@/lib/google-maps';
+import { MapTypeToggle, type MapView } from '@/components/ui/map-type-toggle';
 import { cn } from '@/lib/utils';
 
 const MAP_CONTAINER_STYLE = { width: '100%', height: '100%' };
@@ -50,7 +52,7 @@ const MOBILE_STATUS_COLORS = {
   DEFAULT: '#7c3aed',
   IDLE: '#2563eb',
   BUSY: '#f59e0b',
-  OFFLINE: '#64748b',
+  OFFLINE: '#000000',
   EMERGENCY: '#dc2626',
 } as const;
 
@@ -286,10 +288,20 @@ interface LiveMapProps {
 }
 
 export function LiveMap({ positions, onPositionClick, selectedPositionId = null, activeCategory = 'ALL', categories = [] }: LiveMapProps) {
-  const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY as string | undefined;
-  const { isLoaded, loadError } = useJsApiLoader({ googleMapsApiKey: apiKey ?? '', id: 'fieldforce-google-map' });
+  const apiKey = GOOGLE_MAPS_API_KEY;
+  const { isLoaded, loadError } = useGoogleMaps();
   const mapRef = useRef<google.maps.Map | null>(null);
   const onMapLoad = useCallback((map: google.maps.Map) => { mapRef.current = map; }, []);
+  const [mapView, setMapView] = useState<MapView>('roadmap');
+
+  // Memoised so the position poll does not re-apply the options every refresh.
+  // The POI/transit styling only takes effect on the roadmap view.
+  const mapOptions = useMemo<google.maps.MapOptions>(() => ({
+    mapTypeId: mapView,
+    mapTypeControl: false, // replaced by the in-app Map/Satellite toggle
+    streetViewControl: false, fullscreenControl: true, zoomControl: true,
+    styles: [{ featureType: 'poi', stylers: [{ visibility: 'off' }] }, { featureType: 'transit', stylers: [{ visibility: 'simplified' }] }],
+  }), [mapView]);
 
   const filtered = positions.filter(p => {
     if (activeCategory === 'ALL') return true;
@@ -353,10 +365,7 @@ export function LiveMap({ positions, onPositionClick, selectedPositionId = null,
         center={DEFAULT_CENTER}
         zoom={11}
         onLoad={onMapLoad}
-        options={{
-          mapTypeControl: false, streetViewControl: false, fullscreenControl: true, zoomControl: true,
-          styles: [{ featureType: 'poi', stylers: [{ visibility: 'off' }] }, { featureType: 'transit', stylers: [{ visibility: 'simplified' }] }],
-        }}
+        options={mapOptions}
       >
         {filtered
           .filter(p => p.latitude != null && p.longitude != null)
@@ -373,6 +382,7 @@ export function LiveMap({ positions, onPositionClick, selectedPositionId = null,
             );
           })}
       </GoogleMap>
+      <MapTypeToggle value={mapView} onChange={setMapView} className="absolute top-3 left-3 z-10" />
       <Legend categories={legendCategories} />
     </div>
   );

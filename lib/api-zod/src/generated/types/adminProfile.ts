@@ -5,6 +5,7 @@
  * FieldForce Live — Admin Panel API
  * OpenAPI spec version: 0.1.0
  */
+import type { UserRole } from './userRole';
 
 export interface AdminProfile {
   id: number;
@@ -13,4 +14,5 @@ export interface AdminProfile {
   email: string;
   customerId: number;
   customerName: string;
+  role: UserRole;
 }

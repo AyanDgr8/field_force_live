@@ -47,11 +47,22 @@ function ClassicTabLayout() {
         tabBarStyle: {
           position: 'absolute',
           backgroundColor: isIOS ? 'transparent' : colors.card,
-          borderTopWidth: 1,
+          borderTopWidth: 1.5,
           borderTopColor: colors.border,
-          elevation: 0,
-          ...(isWeb ? { height: 84 } : {}),
+          elevation: 18,
+          shadowColor: '#0f1b35',
+          shadowOffset: { width: 0, height: -8 },
+          shadowOpacity: isDark ? 0.32 : 0.14,
+          shadowRadius: 18,
+          height: isWeb ? 84 : 72,
+          paddingTop: 8,
+          paddingBottom: isWeb ? 12 : 8,
         },
+        tabBarLabelStyle: { fontSize: 11, fontWeight: '700' },
+        tabBarItemStyle: { borderRadius: 14 },
+        tabBarHideOnKeyboard: true,
+        lazy: true,
+        sceneStyle: { backgroundColor: colors.background },
         tabBarBackground: () =>
           isIOS ? (
             <BlurView intensity={100} tint={isDark ? 'dark' : 'light'} style={StyleSheet.absoluteFill} />

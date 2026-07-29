@@ -52,7 +52,18 @@ const mobileAppUrlPlugin: Plugin = {
           const hostUri =
             manifest.extra?.expoClient?.hostUri ??
             manifest.extra?.expoGo?.debuggerHost;
-          if (hostUri) url = `exp://${hostUri}`;
+          // Metro can advertise a loopback address even though the dashboard
+          // already has a LAN-safe fallback. Never turn that into a QR code:
+          // 127.0.0.1/localhost would point a physical phone back to itself.
+          const advertisedHost = hostUri?.split(':')[0];
+          if (
+            hostUri &&
+            advertisedHost !== 'localhost' &&
+            advertisedHost !== '127.0.0.1' &&
+            advertisedHost !== '::1'
+          ) {
+            url = `exp://${hostUri}`;
+          }
         }
       } catch {
         // Metro may still be starting. The page polls and will retry.
@@ -81,6 +92,16 @@ const https = useHttps
       cert: fs.readFileSync(
         resolveCertificatePath(process.env.SSL_CERT_PATH, 'ssl/fullchain.pem'),
       ),
+    }
+  : undefined;
+
+const apiProxy = apiProxyTarget
+  ? {
+      '/api': {
+        target: apiProxyTarget,
+        changeOrigin: true,
+        secure: process.env.API_PROXY_SECURE !== 'false',
+      },
     }
   : undefined;
 
@@ -137,22 +158,13 @@ export default defineConfig({
     fs: {
       strict: true,
     },
-    ...(apiProxyTarget
-      ? {
-          proxy: {
-            '/api': {
-              target: apiProxyTarget,
-              changeOrigin: true,
-              secure: process.env.API_PROXY_SECURE !== 'false',
-            },
-          },
-        }
-      : {}),
+    ...(apiProxy ? { proxy: apiProxy } : {}),
   },
   preview: {
     port,
     host: '0.0.0.0',
     allowedHosts: true,
     https,
+    ...(apiProxy ? { proxy: apiProxy } : {}),
   },
 });

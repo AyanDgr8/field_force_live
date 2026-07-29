@@ -1,9 +1,8 @@
 import { useState } from 'react';
-import { Link } from 'wouter';
+import { useLocation } from 'wouter';
 import { useListUsers } from '@workspace/api-client-react';
 import { format } from 'date-fns';
-import { Search, UserCircle, Shield, ArrowRight } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { Search, UserCircle, Shield } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -11,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { normalizeList } from '@/lib/normalize-list';
 
 export default function UsersList() {
+  const [, setLocation] = useLocation();
   const [roleFilter, setRoleFilter] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [search, setSearch] = useState('');
@@ -56,7 +56,9 @@ export default function UsersList() {
               <SelectContent>
                 <SelectItem value="all">All Roles</SelectItem>
                 <SelectItem value="USER">Field Agents</SelectItem>
-                <SelectItem value="ADMIN">Administrators</SelectItem>
+                <SelectItem value="SUPER_ADMIN">Super Admins</SelectItem>
+                <SelectItem value="STATE_ADMIN">State Admins</SelectItem>
+                <SelectItem value="HUB_ADMIN">Hub Admins</SelectItem>
               </SelectContent>
             </Select>
             <Select value={statusFilter} onValueChange={setStatusFilter}>
@@ -82,25 +84,37 @@ export default function UsersList() {
                 <th className="px-6 py-4 font-medium">Role</th>
                 <th className="px-6 py-4 font-medium">Status</th>
                 <th className="px-6 py-4 font-medium">Added</th>
-                <th className="px-6 py-4 font-medium text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y">
               {isLoading ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-8 text-center text-muted-foreground">
+                  <td colSpan={5} className="px-6 py-8 text-center text-muted-foreground">
                     Loading users...
                   </td>
                 </tr>
               ) : filteredUsers?.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-8 text-center text-muted-foreground">
+                  <td colSpan={5} className="px-6 py-8 text-center text-muted-foreground">
                     No users found matching criteria.
                   </td>
                 </tr>
               ) : (
                 filteredUsers?.map(user => (
-                  <tr key={user.id} className="hover:bg-muted/30 transition-colors">
+                  <tr
+                    key={user.id}
+                    role="link"
+                    tabIndex={0}
+                    aria-label={`Open ${user.firstName} ${user.lastName}`}
+                    className="cursor-pointer hover:bg-muted/50 focus-visible:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/30 transition-colors"
+                    onClick={() => setLocation(`/users/${user.id}`)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        setLocation(`/users/${user.id}`);
+                      }
+                    }}
+                  >
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
                         <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-semibold">
@@ -117,7 +131,7 @@ export default function UsersList() {
                       <div className="text-xs text-muted-foreground mt-0.5">{user.phoneNumber}</div>
                     </td>
                     <td className="px-6 py-4">
-                      {user.role === 'ADMIN' ? (
+                      {user.role !== 'USER' ? (
                         <Badge variant="secondary" className="gap-1 bg-amber-50 text-amber-700 hover:bg-amber-50"><Shield className="w-3 h-3" /> Admin</Badge>
                       ) : (
                         <Badge variant="secondary" className="gap-1 bg-blue-50 text-blue-700 hover:bg-blue-50"><UserCircle className="w-3 h-3" /> Agent</Badge>
@@ -128,13 +142,6 @@ export default function UsersList() {
                     </td>
                     <td className="px-6 py-4 text-muted-foreground">
                       {format(new Date(user.createdAt), 'MMM d, yyyy')}
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <Link href={`/users/${user.id}`}>
-                        <Button variant="ghost" size="sm" className="h-8 px-2">
-                          View <ArrowRight className="w-4 h-4 ml-1" />
-                        </Button>
-                      </Link>
                     </td>
                   </tr>
                 ))

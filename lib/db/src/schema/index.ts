@@ -6,3 +6,5 @@ export * from "./onboarding";
 export * from "./dispositions";
 export * from "./statusEvents";
 export * from "./gpsDevices";
+export * from "./iotOperations";
+export * from "./organization";

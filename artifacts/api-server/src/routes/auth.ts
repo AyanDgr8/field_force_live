@@ -1,7 +1,8 @@
 import { Router, type IRouter } from "express";
-import { eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { v4 as uuidv4 } from "uuid";
+import { z } from "zod";
 import { db } from "@workspace/db";
 import {
   credentialsTable,
@@ -17,8 +18,17 @@ import {
   GetMeResponse,
 } from "@workspace/api-zod";
 import { signJwt, verifyJwt } from "../middlewares/auth.js";
-import { sendLoginOtpEmail } from "../lib/mailer.js";
+import {
+  sendLoginOtpEmail,
+  sendPasswordChangedEmail,
+  sendPasswordResetLinkEmail,
+} from "../lib/mailer.js";
 import { writeOtpLog } from "../lib/otpLog.js";
+import {
+  PASSWORD_RESET_LINK_CODE,
+  PASSWORD_RESET_TTL_MINUTES,
+  passwordResetLinkUrl,
+} from "../lib/accounts.js";
 
 const router: IRouter = Router();
 
@@ -40,10 +50,24 @@ router.post("/auth/login", async (req, res): Promise<void> => {
   }
   const { username, password } = parsed.data;
 
-  const [cred] = await db
+  let [cred] = await db
     .select()
     .from(credentialsTable)
     .where(eq(credentialsTable.username, username));
+
+  // Administrators may sign in with either their generated username or email.
+  if (!cred && username.includes("@")) {
+    const [emailUser] = await db
+      .select({ id: usersTable.id })
+      .from(usersTable)
+      .where(eq(usersTable.email, username.trim().toLowerCase()));
+    if (emailUser) {
+      [cred] = await db
+        .select()
+        .from(credentialsTable)
+        .where(eq(credentialsTable.userId, emailUser.id));
+    }
+  }
 
   if (!cred) {
     res.status(401).json({ error: "Invalid credentials" });
@@ -66,7 +90,7 @@ router.post("/auth/login", async (req, res): Promise<void> => {
     return;
   }
 
-  if (user.role !== "ADMIN") {
+  if (user.role === "USER") {
     res.status(403).json({ error: "This account is not authorized to access the admin panel" });
     return;
   }
@@ -172,7 +196,7 @@ router.post("/auth/verify-otp", async (req, res): Promise<void> => {
     return;
   }
 
-  if (user.role !== "ADMIN") {
+  if (user.role === "USER") {
     res.status(403).json({ error: "This account is not authorized to access the admin panel" });
     return;
   }
@@ -222,6 +246,7 @@ router.get("/auth/me", async (req, res): Promise<void> => {
       email: usersTable.email,
       customerId: usersTable.customerId,
       customerName: customersTable.name,
+      role: usersTable.role,
     })
     .from(usersTable)
     .innerJoin(customersTable, eq(usersTable.customerId, customersTable.id))
@@ -239,6 +264,133 @@ router.get("/auth/me", async (req, res): Promise<void> => {
 router.post("/auth/logout", (_req, res): void => {
   res.clearCookie("ff_session");
   res.sendStatus(204);
+});
+
+const PasswordResetRequestBody = z.object({
+  email: z.string().trim().email(),
+});
+
+const PasswordResetConfirmBody = z.object({
+  userId: z.coerce.number().int().positive(),
+  token: z.string().uuid(),
+  newPassword: z.string().min(8).max(128),
+});
+
+// POST /auth/password-reset/request -- email a one-time reset link
+router.post("/auth/password-reset/request", async (req, res): Promise<void> => {
+  const parsed = PasswordResetRequestBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Enter a valid email address" });
+    return;
+  }
+
+  const email = parsed.data.email.toLowerCase();
+  const [user] = await db
+    .select()
+    .from(usersTable)
+    .where(and(eq(usersTable.email, email), isNull(usersTable.deletedAt)));
+
+  if (!user || user.status !== "ACTIVE") {
+    res.status(404).json({
+      error: "The email address you entered is not associated with an account.",
+    });
+    return;
+  }
+
+  const token = uuidv4();
+  const expiresAt = new Date(Date.now() + PASSWORD_RESET_TTL_MINUTES * 60 * 1000);
+  await db.insert(otpTokensTable).values({
+    userId: user.id,
+    loginToken: token,
+    code: PASSWORD_RESET_LINK_CODE,
+    expiresAt,
+    consumedAt: null,
+  });
+
+  try {
+    await sendPasswordResetLinkEmail({
+      to: user.email,
+      recipientName: user.firstName,
+      resetUrl: passwordResetLinkUrl(user.id, token),
+      expiresInMinutes: PASSWORD_RESET_TTL_MINUTES,
+    });
+  } catch (error) {
+    req.log.error({ err: error, userId: user.id }, "Failed to send password reset link");
+    res.status(502).json({ error: "Unable to send the reset email. Please try again." });
+    return;
+  }
+
+  res.json({
+    message: "Password reset link has been sent to your email. Please check your inbox.",
+  });
+});
+
+// POST /auth/password-reset/confirm -- consume the link and set a new password
+router.post("/auth/password-reset/confirm", async (req, res): Promise<void> => {
+  const parsed = PasswordResetConfirmBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Password must be at least 8 characters long" });
+    return;
+  }
+
+  const [resetToken] = await db
+    .select()
+    .from(otpTokensTable)
+    .where(eq(otpTokensTable.loginToken, parsed.data.token));
+
+  // The sentinel check keeps a login OTP row from being spent as a reset link.
+  if (
+    !resetToken ||
+    resetToken.code !== PASSWORD_RESET_LINK_CODE ||
+    resetToken.userId !== parsed.data.userId ||
+    resetToken.consumedAt ||
+    resetToken.expiresAt < new Date()
+  ) {
+    res.status(400).json({ error: "This reset link is invalid or has expired." });
+    return;
+  }
+
+  const [user] = await db
+    .select()
+    .from(usersTable)
+    .where(and(eq(usersTable.id, resetToken.userId), isNull(usersTable.deletedAt)));
+
+  if (!user || user.status !== "ACTIVE") {
+    res.status(400).json({ error: "This reset link is invalid or has expired." });
+    return;
+  }
+
+  const passwordHash = await bcrypt.hash(parsed.data.newPassword, 10);
+  const [credential] = await db
+    .select()
+    .from(credentialsTable)
+    .where(eq(credentialsTable.userId, user.id));
+
+  if (credential) {
+    await db
+      .update(credentialsTable)
+      .set({ passwordHash })
+      .where(eq(credentialsTable.id, credential.id));
+  } else {
+    await db.insert(credentialsTable).values({
+      userId: user.id,
+      username: user.employeeCode,
+      passwordHash,
+    });
+  }
+
+  await db
+    .update(otpTokensTable)
+    .set({ consumedAt: new Date() })
+    .where(eq(otpTokensTable.id, resetToken.id));
+
+  try {
+    await sendPasswordChangedEmail({ to: user.email, recipientName: user.firstName });
+  } catch (error) {
+    req.log.error({ err: error, userId: user.id }, "Failed to send password changed email");
+  }
+
+  res.json({ message: "Password reset successful" });
 });
 
 export default router;

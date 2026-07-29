@@ -3,6 +3,7 @@ import React, {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from 'react';
@@ -103,6 +104,12 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  // Ask once after sign-in so the home map, attendance scanner and background
+  // sync are ready immediately instead of waiting for the user to visit Profile.
+  useEffect(() => {
+    if (user && !permissionGranted) void requestPermission();
+  }, [user, permissionGranted, requestPermission]);
+
   // Get current position once
   const getCoords = useCallback(async (): Promise<Coords | null> => {
     if (Platform.OS === 'web') {
@@ -200,16 +207,16 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
     };
   }, [user, permissionGranted, collectPing, flushPings]);
 
+  const value = useMemo(() => ({
+    coords,
+    permissionGranted,
+    requestPermission,
+    getCoords,
+    pendingSync,
+  }), [coords, permissionGranted, requestPermission, getCoords, pendingSync]);
+
   return (
-    <LocationContext.Provider
-      value={{
-        coords,
-        permissionGranted,
-        requestPermission,
-        getCoords,
-        pendingSync,
-      }}
-    >
+    <LocationContext.Provider value={value}>
       {children}
     </LocationContext.Provider>
   );

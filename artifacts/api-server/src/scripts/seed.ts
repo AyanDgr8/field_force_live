@@ -91,7 +91,7 @@ async function main() {
       employeeCode: `ADMIN00${i}`,
       phoneNumber: `+9198765432${i + 30}`,
       email: `admin${i}@acme.in`,
-      role: "ADMIN",
+      role: "SUPER_ADMIN",
       status: "ACTIVE",
       consentGivenAt: new Date(),
     });

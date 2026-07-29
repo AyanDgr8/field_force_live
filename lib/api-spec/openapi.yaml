@@ -1065,7 +1065,7 @@ components:
 
     UserRole:
       type: string
-      enum: [ADMIN, USER]
+      enum: [SUPER_ADMIN, STATE_ADMIN, HUB_ADMIN, USER]
     UserStatus:
       type: string
       enum: [INVITED, ACTIVE, SUSPENDED]
@@ -1130,7 +1130,7 @@ components:
           $ref: "#/components/schemas/AdminProfile"
     AdminProfile:
       type: object
-      required: [id, firstName, lastName, email, customerId, customerName]
+      required: [id, firstName, lastName, email, customerId, customerName, role]
       properties:
         id: { type: integer }
         firstName: { type: string }
@@ -1138,6 +1138,8 @@ components:
         email: { type: string }
         customerId: { type: integer }
         customerName: { type: string }
+        role:
+          $ref: "#/components/schemas/UserRole"
 
     Address:
       type: object
@@ -1723,4 +1725,3 @@ components:
         token: { type: string }
         platform:
           $ref: "#/components/schemas/PushPlatform"
-

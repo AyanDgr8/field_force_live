@@ -16,6 +16,9 @@ import mobileStatusRouter from "./mobileStatus";
 import devicesRouter from "./devices";
 import vendorAccountsRouter from "./vendorAccounts";
 import deviceCategoriesRouter from "./deviceCategories";
+import iotOperationsRouter from "./iotOperations";
+import organizationRouter from "./organization";
+import geoRouter from "./geo";
 
 const router: IRouter = Router();
 
@@ -36,5 +39,8 @@ router.use(mobileStatusRouter);
 router.use(devicesRouter);
 router.use(vendorAccountsRouter);
 router.use(deviceCategoriesRouter);
+router.use(iotOperationsRouter);
+router.use(organizationRouter);
+router.use(geoRouter);
 
 export default router;

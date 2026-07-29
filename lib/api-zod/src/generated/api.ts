@@ -47,7 +47,8 @@ export const VerifyOtpResponse = zod.object({
   "lastName": zod.string(),
   "email": zod.string(),
   "customerId": zod.number(),
-  "customerName": zod.string()
+  "customerName": zod.string(),
+  "role": zod.enum(['SUPER_ADMIN', 'STATE_ADMIN', 'HUB_ADMIN', 'USER'])
 })
 })
 
@@ -61,7 +62,8 @@ export const GetMeResponse = zod.object({
   "lastName": zod.string(),
   "email": zod.string(),
   "customerId": zod.number(),
-  "customerName": zod.string()
+  "customerName": zod.string(),
+  "role": zod.enum(['SUPER_ADMIN', 'STATE_ADMIN', 'HUB_ADMIN', 'USER'])
 })
 
 
@@ -75,7 +77,7 @@ export const LogoutResponse = zod.void()
  * @summary List all users for the admin's customer
  */
 export const ListUsersQueryParams = zod.object({
-  "role": zod.enum(['ADMIN', 'USER']).optional(),
+  "role": zod.enum(['SUPER_ADMIN', 'STATE_ADMIN', 'HUB_ADMIN', 'USER']).optional(),
   "status": zod.enum(['INVITED', 'ACTIVE', 'SUSPENDED']).optional()
 })
 
@@ -88,7 +90,7 @@ export const ListUsersResponseItem = zod.object({
   "employeeCode": zod.string(),
   "phoneNumber": zod.string(),
   "email": zod.string(),
-  "role": zod.enum(['ADMIN', 'USER']),
+  "role": zod.enum(['SUPER_ADMIN', 'STATE_ADMIN', 'HUB_ADMIN', 'USER']),
   "status": zod.enum(['INVITED', 'ACTIVE', 'SUSPENDED']),
   "consentGivenAt": zod.coerce.date().nullable(),
   "createdAt": zod.coerce.date()
@@ -117,7 +119,7 @@ export const CreateUserBody = zod.object({
   "phoneNumber": zod.string().min(1),
   "email": zod.string().min(1),
   "username": zod.string().optional(),
-  "role": zod.enum(['ADMIN', 'USER']),
+  "role": zod.enum(['SUPER_ADMIN', 'STATE_ADMIN', 'HUB_ADMIN', 'USER']),
   "addresses": zod.array(zod.object({
   "type": zod.enum(['OFFICE', 'BASE_OFFICE', 'SITE_OFFICE', 'HOME']),
   "rawAddress": zod.string().min(1)
@@ -138,7 +140,7 @@ export const CreateUserResponse = zod.object({
   "employeeCode": zod.string(),
   "phoneNumber": zod.string(),
   "email": zod.string(),
-  "role": zod.enum(['ADMIN', 'USER']),
+  "role": zod.enum(['SUPER_ADMIN', 'STATE_ADMIN', 'HUB_ADMIN', 'USER']),
   "status": zod.enum(['INVITED', 'ACTIVE', 'SUSPENDED']),
   "consentGivenAt": zod.coerce.date().nullable(),
   "createdAt": zod.coerce.date()
@@ -170,7 +172,7 @@ export const GetUserResponse = zod.object({
   "employeeCode": zod.string(),
   "phoneNumber": zod.string(),
   "email": zod.string(),
-  "role": zod.enum(['ADMIN', 'USER']),
+  "role": zod.enum(['SUPER_ADMIN', 'STATE_ADMIN', 'HUB_ADMIN', 'USER']),
   "status": zod.enum(['INVITED', 'ACTIVE', 'SUSPENDED']),
   "consentGivenAt": zod.coerce.date().nullable(),
   "createdAt": zod.coerce.date()
@@ -221,7 +223,7 @@ export const UpdateUserResponse = zod.object({
   "employeeCode": zod.string(),
   "phoneNumber": zod.string(),
   "email": zod.string(),
-  "role": zod.enum(['ADMIN', 'USER']),
+  "role": zod.enum(['SUPER_ADMIN', 'STATE_ADMIN', 'HUB_ADMIN', 'USER']),
   "status": zod.enum(['INVITED', 'ACTIVE', 'SUSPENDED']),
   "consentGivenAt": zod.coerce.date().nullable(),
   "createdAt": zod.coerce.date()
@@ -432,8 +434,8 @@ export const GetUserCurrentStopResponse = zod.object({
  */
 export const ListUserSessionsQueryParams = zod.object({
   "userId": zod.coerce.number(),
-  "from": zod.coerce.date().optional(),
-  "to": zod.coerce.date().optional()
+  "from": zod.date().optional(),
+  "to": zod.date().optional()
 })
 
 export const ListUserSessionsResponseItem = zod.object({
@@ -454,7 +456,7 @@ export const ListUserSessionsResponse = zod.array(ListUserSessionsResponseItem)
  */
 export const GetUserBreadcrumbQueryParams = zod.object({
   "userId": zod.coerce.number(),
-  "date": zod.coerce.date()
+  "date": zod.date()
 })
 
 export const GetUserBreadcrumbResponseItem = zod.object({
@@ -492,7 +494,7 @@ export const GetUserPlacesCalendarResponse = zod.array(GetUserPlacesCalendarResp
  */
 export const GetUserDwellSegmentsQueryParams = zod.object({
   "userId": zod.coerce.number(),
-  "date": zod.coerce.date()
+  "date": zod.date()
 })
 
 export const GetUserDwellSegmentsResponseItem = zod.object({
@@ -513,7 +515,7 @@ export const GetUserDwellSegmentsResponse = zod.array(GetUserDwellSegmentsRespon
  */
 export const GetUserDayPlanQueryParams = zod.object({
   "userId": zod.coerce.number(),
-  "date": zod.coerce.date()
+  "date": zod.date()
 })
 
 export const GetUserDayPlanResponse = zod.object({
@@ -871,7 +873,7 @@ export const IngestSessionResponse = zod.object({
  */
 export const GetMobileDayPlanQueryParams = zod.object({
   "userId": zod.coerce.number(),
-  "date": zod.coerce.date()
+  "date": zod.date()
 })
 
 export const GetMobileDayPlanResponse = zod.object({
@@ -1034,7 +1036,7 @@ export const MobileLoginResponse = zod.object({
   "email": zod.string(),
   "employeeCode": zod.string(),
   "customerId": zod.number(),
-  "role": zod.enum(['ADMIN', 'USER'])
+  "role": zod.enum(['SUPER_ADMIN', 'STATE_ADMIN', 'HUB_ADMIN', 'USER'])
 })
 })
 
@@ -1069,7 +1071,7 @@ export const VerifyMobileOtpResponse = zod.object({
   "email": zod.string(),
   "employeeCode": zod.string(),
   "customerId": zod.number(),
-  "role": zod.enum(['ADMIN', 'USER'])
+  "role": zod.enum(['SUPER_ADMIN', 'STATE_ADMIN', 'HUB_ADMIN', 'USER'])
 })
 })
 
@@ -1185,5 +1187,4 @@ export const ToggleSimulatorBody = zod.object({
 export const ToggleSimulatorResponse = zod.object({
   "running": zod.boolean()
 })
-
 

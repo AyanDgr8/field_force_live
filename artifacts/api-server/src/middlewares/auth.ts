@@ -1,5 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
+import { eq } from "drizzle-orm";
+import { db, usersTable } from "@workspace/db";
 
 declare global {
   namespace Express {
@@ -23,7 +25,7 @@ export function verifyJwt(token: string): { adminUserId: number; role: string } 
   return jwt.verify(token, getSecret()) as { adminUserId: number; role: string };
 }
 
-export function requireAuth(req: Request, res: Response, next: NextFunction): void {
+export async function requireAuth(req: Request, res: Response, next: NextFunction): Promise<void> {
   let token: string | undefined;
 
   const authHeader = req.headers.authorization;
@@ -40,12 +42,17 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
 
   try {
     const payload = verifyJwt(token);
-    // Defense in depth: the admin panel only ever issues ADMIN-role tokens
-    // (see /auth/login role check), but this middleware re-validates the
-    // claim so a future token-issuance change can't silently grant
-    // non-admin users access to admin-scoped routes.
-    if (payload.role !== "ADMIN") {
+    if (payload.role === "USER") {
       res.status(403).json({ error: "This account is not authorized to access the admin panel" });
+      return;
+    }
+    const [user] = await db.select({
+      role: usersTable.role,
+      status: usersTable.status,
+      deletedAt: usersTable.deletedAt,
+    }).from(usersTable).where(eq(usersTable.id, payload.adminUserId));
+    if (!user || user.status !== "ACTIVE" || user.deletedAt || user.role === "USER") {
+      res.status(401).json({ error: "Account is inactive or deleted" });
       return;
     }
     req.adminUserId = payload.adminUserId;

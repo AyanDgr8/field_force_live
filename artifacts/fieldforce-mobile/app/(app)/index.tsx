@@ -10,8 +10,10 @@ import {
   Pressable,
   StyleSheet,
   Text,
+  Modal,
   View,
 } from 'react-native';
+import { CameraView, useCameraPermissions, type BarcodeScanningResult } from 'expo-camera';
 import { Feather } from '@expo/vector-icons';
 import { useQuery } from '@tanstack/react-query';
 import * as Haptics from 'expo-haptics';
@@ -132,18 +134,48 @@ const mp = StyleSheet.create({
 
 function ShiftBar({ colors }: { colors: ReturnType<typeof useColors> }) {
   const { status, loading, clockedInAt, clockIn, clockOut, setBusy, setIdle } = useShift();
+  const [scannerOpen, setScannerOpen] = useState(false);
+  const [scanLocked, setScanLocked] = useState(false);
+  const scanLockedRef = useRef(false);
+  const [cameraPermission, requestCameraPermission] = useCameraPermissions();
 
   const clockedInTime = clockedInAt
     ? new Date(clockedInAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     : null;
 
-  const handleClockIn = async () => {
+  const handleClockIn = async (qrToken: string) => {
+    if (scanLockedRef.current) return;
     try {
-      await clockIn();
+      scanLockedRef.current = true;
+      setScanLocked(true);
+      await clockIn(qrToken);
+      setScannerOpen(false);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (e) {
       Alert.alert('Clock-in failed', (e as Error).message);
+    } finally {
+      setTimeout(() => {
+        scanLockedRef.current = false;
+        setScanLocked(false);
+      }, 1200);
     }
+  };
+
+  const openScanner = async () => {
+    if (!cameraPermission?.granted) {
+      const result = await requestCameraPermission();
+      if (!result.granted) {
+        Alert.alert('Camera permission required', 'Allow camera access to scan your assigned hub QR code.');
+        return;
+      }
+    }
+    scanLockedRef.current = false;
+    setScanLocked(false);
+    setScannerOpen(true);
+  };
+
+  const onBarcodeScanned = ({ data }: BarcodeScanningResult) => {
+    if (!scanLockedRef.current && data) void handleClockIn(data.trim());
   };
 
   const handleClockOut = () => {
@@ -196,12 +228,12 @@ function ShiftBar({ colors }: { colors: ReturnType<typeof useColors> }) {
           /* ── Clock In ── */
           <Pressable
             style={({ pressed }) => [sb.btn, { backgroundColor: colors.success, opacity: pressed ? 0.85 : 1 }]}
-            onPress={handleClockIn}
+            onPress={openScanner}
             disabled={loading}
           >
             {loading
               ? <ActivityIndicator color="#fff" size="small" />
-              : <><Feather name="log-in" size={14} color="#fff" /><Text style={sb.btnTxt}>Login / Clock In</Text></>}
+              : <><Feather name="camera" size={14} color="#fff" /><Text style={sb.btnTxt}>Scan Hub QR</Text></>}
           </Pressable>
         ) : (
           <>
@@ -241,6 +273,24 @@ function ShiftBar({ colors }: { colors: ReturnType<typeof useColors> }) {
           </>
         )}
       </View>
+      <Modal visible={scannerOpen} animationType="slide" onRequestClose={() => setScannerOpen(false)}>
+        <View style={{ flex: 1, backgroundColor: '#000' }}>
+          <CameraView
+            style={{ flex: 1 }}
+            facing="back"
+            barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
+            onBarcodeScanned={scanLocked ? undefined : onBarcodeScanned}
+          />
+          <View style={{ position: 'absolute', left: 24, right: 24, bottom: 48, gap: 12 }}>
+            <Text style={{ color: '#fff', textAlign: 'center', fontSize: 16, fontWeight: '600' }}>
+              Scan the QR code at your assigned delivery hub
+            </Text>
+            <Pressable onPress={() => setScannerOpen(false)} style={{ backgroundColor: '#fff', padding: 14, borderRadius: 10 }}>
+              <Text style={{ textAlign: 'center', fontWeight: '700' }}>Cancel</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -250,26 +300,33 @@ const sb = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    gap: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1.5,
+    gap: 10,
     flexWrap: 'wrap',
+    shadowColor: '#0f1b35',
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    elevation: 7,
+    zIndex: 4,
   },
   left: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   dot: { width: 9, height: 9, borderRadius: 5 },
-  statusTxt: { fontSize: 13, fontWeight: '600' as const },
+  statusTxt: { fontSize: 13, fontWeight: '700' as const },
   since: { fontSize: 12 },
   right: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
   btn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
-    borderRadius: 8,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
+    minHeight: 42,
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
   },
-  btnTxt: { color: '#fff', fontSize: 12, fontWeight: '700' as const },
+  btnTxt: { color: '#fff', fontSize: 12, fontWeight: '800' as const, letterSpacing: 0.1 },
 });
 
 // ─── Stop callout card (tapped pin) ──────────────────────────────────────────
@@ -318,17 +375,17 @@ const sc = StyleSheet.create({
     bottom: 100,
     left: 16,
     right: 16,
-    borderRadius: 14,
-    borderWidth: 1,
-    padding: 14,
+    borderRadius: 18,
+    borderWidth: 1.5,
+    padding: 16,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.12,
-    shadowRadius: 12,
-    elevation: 8,
+    shadowOpacity: 0.18,
+    shadowRadius: 16,
+    elevation: 10,
   },
   code: { fontSize: 15, fontWeight: '700' as const, marginBottom: 3 },
   addr: { fontSize: 12, lineHeight: 17 },

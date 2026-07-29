@@ -161,7 +161,15 @@ function StopCard({
     <Pressable
       style={({ pressed }) => [
         c.card,
-        { borderLeftColor: sm.color, backgroundColor: colors.card, opacity: pressed ? 0.9 : isDone ? 0.6 : 1 },
+        {
+          borderLeftColor: sm.color,
+          borderTopColor: colors.border,
+          borderRightColor: colors.border,
+          borderBottomColor: colors.border,
+          backgroundColor: colors.card,
+          opacity: pressed ? 0.9 : isDone ? 0.68 : 1,
+          transform: [{ scale: pressed ? 0.985 : 1 }],
+        },
       ]}
       onPress={onPress}
     >
@@ -372,15 +380,18 @@ const c = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     borderLeftWidth: 4,
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 10,
+    borderTopWidth: 1,
+    borderRightWidth: 1,
+    borderBottomWidth: 1,
+    borderRadius: 16,
+    padding: 15,
+    marginBottom: 12,
     gap: 12,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.07,
-    shadowRadius: 4,
-    elevation: 2,
+    shadowOpacity: 0.11,
+    shadowRadius: 8,
+    elevation: 4,
   },
   seq: {
     width: 30,

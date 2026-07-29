@@ -8,7 +8,9 @@
     "build": "node ./build.mjs",
     "start": "node --enable-source-maps ./dist/index.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "seed": "tsx src/scripts/seed.ts"
+    "seed": "tsx src/scripts/seed.ts",
+    "create-super-admin": "tsx src/scripts/createSuperAdmin.ts",
+    "purge-deleted-users": "tsx src/scripts/purgeDeletedUsers.ts"
   },
   "dependencies": {
     "@replit/connectors-sdk": "^0.4.1",
@@ -25,6 +27,7 @@
     "pino": "^9.14.0",
     "pino-http": "^10.5.0",
     "uuid": "^14.0.1",
+    "xlsx": "^0.18.5",
     "zod": "^3.25.76"
   },
   "devDependencies": {

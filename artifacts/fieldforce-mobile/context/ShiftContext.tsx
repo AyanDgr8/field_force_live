@@ -18,6 +18,7 @@ import React, {
 } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { enqueue } from '@/lib/offlineQueue';
+import { apiPost } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { useLocation } from '@/context/LocationContext';
 
@@ -33,7 +34,7 @@ interface ShiftState {
 }
 
 interface ShiftContextValue extends ShiftState {
-  clockIn: () => Promise<void>;
+  clockIn: (qrToken: string) => Promise<void>;
   clockOut: () => Promise<void>;
   setBusy: () => Promise<void>;
   setIdle: () => Promise<void>;
@@ -88,31 +89,30 @@ export function ShiftProvider({ children }: { children: React.ReactNode }) {
 
   // ── Clock In ──────────────────────────────────────────────────────────────
 
-  const clockIn = useCallback(async () => {
+  const clockIn = useCallback(async (qrToken: string) => {
     if (!user) return;
     setState((s) => ({ ...s, loading: true, error: null }));
     try {
       const coords = await getCoords();
-      const now = new Date().toISOString();
-      // Queued so an agent starting their day without signal is not blocked —
-      // the shift is recorded locally and syncs when coverage returns.
-      await enqueue('/api/ingest/session', {
+      if (!coords) throw new Error('A fresh GPS location is required for attendance.');
+      const result = await apiPost<{ accepted: boolean; clockedInAt: string; message?: string }>(
+        '/api/user/attendance/scan', {
         userId: user.id,
-        event: 'LOGIN',
-        latitude: coords?.latitude ?? 0,
-        longitude: coords?.longitude ?? 0,
+        qrToken,
+        latitude: coords.latitude,
+        longitude: coords.longitude,
+        accuracyM: coords.accuracy ?? null,
+      });
+      if (!result.accepted) throw new Error(result.message ?? 'Attendance was not accepted.');
+      const now = result.clockedInAt;
+      // Also set status to IDLE on server
+      await enqueue('/api/user/status', {
+        userId: user.id,
+        status: 'IDLE',
+        lat: coords.latitude,
+        lng: coords.longitude,
         at: now,
       });
-      // Also set status to IDLE on server
-      if (coords) {
-        await enqueue('/api/user/status', {
-          userId: user.id,
-          status: 'IDLE',
-          lat: coords.latitude,
-          lng: coords.longitude,
-          at: now,
-        });
-      }
       await persist('IDLE', now);
       setState({ status: 'IDLE', clockedInAt: now, loading: false, error: null });
     } catch (e) {

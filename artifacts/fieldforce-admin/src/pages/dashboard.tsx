@@ -7,7 +7,6 @@ import { AlertCircle, Navigation, Radio, MapPinOff, ListFilter, Activity, Wifi, 
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { LiveStatusBadge } from '@/components/ui/live-status-badge';
 import { LiveMap, CategoryTabs, type UnifiedPosition, type CategoryFilter } from '@/components/ui/live-map';
 
@@ -87,9 +86,9 @@ export default function Dashboard() {
         />
       </div>
 
-      <div className="flex-1 flex gap-6 min-h-0">
+      <div className="flex h-[65vh] shrink-0 gap-6 overflow-hidden">
         {/* Left: Map */}
-        <div className="flex-1 relative rounded-lg overflow-hidden border bg-card">
+        <div className="flex-1 h-full relative rounded-lg overflow-hidden border bg-card">
           <LiveMap
             positions={positionList}
             selectedPositionId={selectedId}
@@ -103,9 +102,9 @@ export default function Dashboard() {
         </div>
 
         {/* Right: Mobile agent list */}
-        <div className="w-80 flex flex-col gap-4 shrink-0">
-          <Card className="flex-1 flex flex-col h-full overflow-hidden">
-            <div className="p-4 border-b flex-shrink-0 space-y-3">
+        <div className="w-80 h-full min-h-0 flex flex-col shrink-0">
+          <Card className="flex h-full min-h-0 flex-col overflow-hidden">
+            <div className="sticky top-0 z-10 flex-shrink-0 space-y-3 border-b bg-card/95 p-4 backdrop-blur">
               <div className="flex items-center justify-between">
                 <h3 className="font-semibold flex items-center gap-2">
                   <ListFilter className="w-4 h-4" /> Mobile Agents
@@ -127,7 +126,7 @@ export default function Dashboard() {
               />
             </div>
 
-            <ScrollArea className="flex-1">
+            <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
               <div className="p-2 space-y-1">
                 {filteredMobile.map(pos => {
                   const key = `u-${pos.userId}`;
@@ -168,7 +167,7 @@ export default function Dashboard() {
                   </div>
                 )}
               </div>
-            </ScrollArea>
+            </div>
           </Card>
         </div>
       </div>

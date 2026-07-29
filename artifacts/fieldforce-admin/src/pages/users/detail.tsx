@@ -10,7 +10,8 @@ import {
   useGetOnboardingInvite,
   useGetUserDayPlan,
   useListDispositions,
-  useGetLivePositions
+  useGetLivePositions,
+  useGetMe
 } from '@workspace/api-client-react';
 import { LiveStatusBadge } from '@/components/ui/live-status-badge';
 import { format } from 'date-fns';
@@ -18,7 +19,7 @@ import {
   ArrowLeft, Map as MapIcon, Calendar, Activity, 
   AlertTriangle, Phone, Mail, MapPin, Building,
   ShieldAlert, Settings, Loader2, Copy, CheckCircle2, ChevronRight, Share,
-  KeyRound
+  KeyRound, Trash2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -41,6 +42,7 @@ import {
 export default function UserDetail({ params }: { params: { id: string } }) {
   const userId = parseInt(params.id);
   const { data: user, isLoading } = useGetUser(userId);
+  const { data: currentAdmin } = useGetMe();
   const [selectedDate, setSelectedDate] = useState<string>(format(new Date(), 'yyyy-MM-dd'));
   const { data: dayPlan } = useGetUserDayPlan({ userId, date: selectedDate });
   const { data: dispositions } = useListDispositions();
@@ -61,7 +63,7 @@ export default function UserDetail({ params }: { params: { id: string } }) {
           <div>
             <div className="flex items-center gap-3">
               <h1 className="text-2xl font-bold tracking-tight">{user.firstName} {user.lastName}</h1>
-              {user.role === 'ADMIN' ? (
+              {user.role !== 'USER' ? (
                 <Badge variant="secondary" className="bg-amber-50 text-amber-700">Admin</Badge>
               ) : (
                 <Badge variant="secondary" className="bg-blue-50 text-blue-700">Agent</Badge>
@@ -78,6 +80,14 @@ export default function UserDetail({ params }: { params: { id: string } }) {
         </div>
         
         <div className="flex gap-2">
+          {currentAdmin && currentAdmin.id !== userId && (
+            <DeleteUserButton
+              userId={userId}
+              userName={`${user.firstName} ${user.lastName}`}
+              targetRole={user.role}
+              currentRole={currentAdmin.role}
+            />
+          )}
           <ResetPasswordButton
             userId={userId}
             userName={`${user.firstName} ${user.lastName}`}
@@ -201,6 +211,56 @@ export default function UserDetail({ params }: { params: { id: string } }) {
         </div>
       </div>
     </div>
+  );
+}
+
+function DeleteUserButton({
+  userId,
+  userName,
+  targetRole,
+  currentRole,
+}: {
+  userId: number;
+  userName: string;
+  targetRole: 'SUPER_ADMIN' | 'STATE_ADMIN' | 'HUB_ADMIN' | 'USER';
+  currentRole: 'SUPER_ADMIN' | 'STATE_ADMIN' | 'HUB_ADMIN' | 'USER';
+}) {
+  const [, setLocation] = useLocation();
+  const { toast } = useToast();
+  const [deleting, setDeleting] = useState(false);
+  const rank = { USER: 0, HUB_ADMIN: 1, STATE_ADMIN: 2, SUPER_ADMIN: 3 };
+  const permitted = rank[currentRole] > rank[targetRole]
+    || (currentRole === 'SUPER_ADMIN' && targetRole === 'SUPER_ADMIN');
+  if (!permitted) return null;
+
+  const remove = async () => {
+    if (!window.confirm(`Delete ${userName}? The account and its tracking history will be permanently removed. This cannot be undone.`)) return;
+    setDeleting(true);
+    try {
+      const response = await fetch(`/api/hierarchy/users/${userId}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(data?.error ?? 'Unable to delete account');
+      toast({ title: 'Account deleted', description: `${userName} has been permanently removed.` });
+      setLocation('/users');
+    } catch (error) {
+      toast({
+        title: 'Deletion failed',
+        description: error instanceof Error ? error.message : 'Unable to delete account',
+        variant: 'destructive',
+      });
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  return (
+    <Button variant="destructive" onClick={remove} disabled={deleting}>
+      {deleting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Trash2 className="w-4 h-4 mr-2" />}
+      Delete Account
+    </Button>
   );
 }
 

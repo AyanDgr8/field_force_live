@@ -14,6 +14,7 @@ import {
 } from '@expo-google-fonts/inter';
 import { router, Slot, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
+import { StatusBar } from 'expo-status-bar';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { LocationProvider } from '@/context/LocationContext';
 import { ShiftProvider } from '@/context/ShiftContext';
@@ -22,7 +23,13 @@ SplashScreen.preventAutoHideAsync();
 
 const queryClient = new QueryClient({
   defaultOptions: {
-    queries: { retry: 1, staleTime: 30_000 },
+    queries: {
+      retry: 2,
+      staleTime: 30_000,
+      gcTime: 10 * 60_000,
+      refetchOnReconnect: true,
+      refetchOnWindowFocus: false,
+    },
   },
 });
 
@@ -75,6 +82,7 @@ export default function RootLayout() {
           <GestureHandlerRootView style={{ flex: 1 }}>
             <KeyboardProvider>
               <AuthProvider>
+                <StatusBar style="light" translucent />
                 <LocationProvider>
                   <ShiftProvider>
                     <AuthGate>
