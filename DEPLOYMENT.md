@@ -87,18 +87,18 @@ Install Expo Go on each test phone and scan the QR printed by Expo. Because the
 API URL is public HTTPS and the Expo connection is tunneled, the phone and
 server do not need to share a Wi-Fi network.
 
-The root launcher uses this mode by default when `START_MOBILE=true`:
+With `APP_URL` configured, the root launcher defaults to serving the production
+mobile bundle through the public `/mobile-app` route:
 
 ```dotenv
 START_MOBILE=true
-MOBILE_TUNNEL=true
 APP_URL=https://fieldforce.example.com
 # MOBILE_API_URL=https://api.fieldforce.example.com
 ```
 
-`MOBILE_TUNNEL=false` explicitly switches back to same-network LAN mode. Expo's
-tunnel only exposes the development bundle, so `APP_URL` (or
-`MOBILE_API_URL`) must point to a publicly reachable HTTPS API.
+Set `MOBILE_TUNNEL=true` only when live Metro reloads are needed. Expo's tunnel
+only exposes the development bundle, so `APP_URL` (or `MOBILE_API_URL`) must
+still point to a publicly reachable HTTPS API.
 
 Do not use this Expo QR as the production distribution method.
 

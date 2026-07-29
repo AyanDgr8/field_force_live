@@ -27,13 +27,25 @@ const useHttps = process.env.USE_HTTPS === 'true';
 const appRoot = process.env.APP_ROOT ?? process.cwd();
 const mobilePort = process.env.MOBILE_PORT ?? '8081';
 const fallbackMobileAppUrl = process.env.VITE_MOBILE_APP_URL ?? '';
-const allowedHosts = (
+const configuredAllowedHosts = (
   process.env.VITE_ALLOWED_HOSTS ??
   'mwmcrm.voicemeetme.net,localhost,127.0.0.1'
 )
   .split(',')
   .map((host) => host.trim())
   .filter(Boolean);
+const appUrlHost = process.env.APP_URL
+  ? new URL(process.env.APP_URL).hostname
+  : undefined;
+const allowedHosts = [
+  ...new Set([
+    ...configuredAllowedHosts,
+    ...(appUrlHost ? [appUrlHost] : []),
+    'mwmcrm.voicemeetme.net',
+    'localhost',
+    '127.0.0.1',
+  ]),
+];
 
 const mobileAppUrlPlugin: Plugin = {
   name: 'fieldforce-mobile-app-url',
@@ -64,8 +76,13 @@ const mobileAppUrlPlugin: Plugin = {
           // already has a LAN-safe fallback. Never turn that into a QR code:
           // 127.0.0.1/localhost would point a physical phone back to itself.
           const advertisedHost = hostUri?.split(':')[0];
+          const isExpoTunnel = advertisedHost?.endsWith('.exp.direct');
           if (
             hostUri &&
+            // A static production manifest may advertise the public deployment
+            // host. Keep the HTTPS /mobile-app landing URL in that case; only
+            // replace it with a live Expo tunnel target.
+            isExpoTunnel &&
             advertisedHost !== 'localhost' &&
             advertisedHost !== '127.0.0.1' &&
             advertisedHost !== '::1'
@@ -175,7 +192,9 @@ export default defineConfig({
     fs: {
       strict: true,
     },
-    ...(apiProxy ? { proxy: apiProxy } : {}),
+    ...(apiProxy || mobileAppProxy
+      ? { proxy: { ...apiProxy, ...mobileAppProxy } }
+      : {}),
   },
   preview: {
     port,

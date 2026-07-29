@@ -24,9 +24,12 @@ const mobilePort = process.env.MOBILE_PORT ?? "8081";
 // The Expo dev server is opt-in: most backend work does not need it, and it
 // pulls in a Metro bundler that is slow to boot.
 const startMobile = process.env.START_MOBILE === "true";
-// A tunnel makes the development bundle reachable from mobile data and other
-// networks. Set MOBILE_TUNNEL=false only when deliberately testing over LAN.
-const mobileTunnel = process.env.MOBILE_TUNNEL !== "false";
+// When a public APP_URL exists, serve the prebuilt mobile bundle through that
+// domain. MOBILE_TUNNEL=true remains available for live Metro development.
+const staticMobile = startMobile &&
+  Boolean(process.env.APP_URL) &&
+  process.env.MOBILE_TUNNEL !== "true";
+const mobileTunnel = !staticMobile && process.env.MOBILE_TUNNEL !== "false";
 const children = [];
 let stopping = false;
 
@@ -132,10 +135,17 @@ const frontend = run("artifacts/fieldforce-admin", {
     process.env.API_PROXY_TARGET ?? `http://localhost:${apiPort}`,
   API_PROXY_SECURE:
     process.env.API_PROXY_SECURE ?? "false",
+  MOBILE_APP_PROXY_TARGET:
+    process.env.MOBILE_APP_PROXY_TARGET ??
+    (staticMobile ? `http://127.0.0.1:${mobilePort}` : ""),
   MOBILE_PORT: mobilePort,
   VITE_MOBILE_APP_URL:
     process.env.VITE_MOBILE_APP_URL ??
-    `exp://${localNetworkAddress()}:${mobilePort}`,
+    (startMobile && !staticMobile && !mobileTunnel
+      ? `exp://${localNetworkAddress()}:${mobilePort}`
+      : process.env.APP_URL
+        ? `${process.env.APP_URL.replace(/\/+$/, "")}/mobile-app`
+        : `exp://${localNetworkAddress()}:${mobilePort}`),
 });
 
 // Expo needs an absolute origin for /api/* because the mobile bundle is served
@@ -147,6 +157,7 @@ const mobile = startMobile
         PORT: mobilePort,
         APP_ROOT: process.cwd(),
         NODE_ENV: "development",
+        BASE_PATH: staticMobile ? "/mobile-app" : "/",
         EXPO_PUBLIC_API_PORT: apiPort,
         // Always inject a phone-reachable API origin. A physical device treats
         // localhost/127.0.0.1 as itself, not as the development computer.
@@ -157,7 +168,7 @@ const mobile = startMobile
           `http://${localNetworkAddress()}:${apiPort}`,
         EXPO_PUBLIC_DOMAIN: "",
       },
-      mobileTunnel ? "dev:tunnel" : "dev:lan",
+      staticMobile ? "serve" : mobileTunnel ? "dev:tunnel" : "dev:lan",
     )
   : null;
 
