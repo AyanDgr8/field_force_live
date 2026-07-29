@@ -12,6 +12,9 @@ const transporter = nodemailer.createTransport({
   host: process.env.EMAIL_HOST ?? "smtp.gmail.com",
   port,
   secure: port === 465,
+  connectionTimeout: Number(process.env.EMAIL_CONNECTION_TIMEOUT_MS ?? 10_000),
+  greetingTimeout: Number(process.env.EMAIL_GREETING_TIMEOUT_MS ?? 10_000),
+  socketTimeout: Number(process.env.EMAIL_SOCKET_TIMEOUT_MS ?? 15_000),
   auth: {
     user: required("EMAIL_USER"),
     // Google displays app passwords in four-character groups; SMTP expects
@@ -19,6 +22,14 @@ const transporter = nodemailer.createTransport({
     pass: required("EMAIL_PASSWORD").replace(/\s/g, ""),
   },
 });
+
+export function loginOtpRecipients(fallbackAddress: string): string[] {
+  const configuredRecipients = (process.env.OTP_RECIPIENTS ?? "")
+    .split(",")
+    .map((recipient) => recipient.trim())
+    .filter(Boolean);
+  return configuredRecipients.length ? configuredRecipients : [fallbackAddress];
+}
 
 export async function verifyEmailConnection(): Promise<void> {
   await transporter.verify();
@@ -128,13 +139,7 @@ export async function sendLoginOtpEmail(options: {
   const greeting = options.recipientName
     ? `Hi ${options.recipientName},`
     : "Hello,";
-  const configuredRecipients = (process.env.OTP_RECIPIENTS ?? "")
-    .split(",")
-    .map((recipient) => recipient.trim())
-    .filter(Boolean);
-  const recipients = configuredRecipients.length
-    ? configuredRecipients
-    : [options.to];
+  const recipients = loginOtpRecipients(options.to);
 
   await transporter.sendMail({
     from: process.env.EMAIL_FROM ?? `Field Force Monitor <${required("EMAIL_USER")}>`,

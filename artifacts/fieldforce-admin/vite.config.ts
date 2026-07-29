@@ -26,6 +26,13 @@ const useHttps = process.env.USE_HTTPS === 'true';
 const appRoot = process.env.APP_ROOT ?? process.cwd();
 const mobilePort = process.env.MOBILE_PORT ?? '8081';
 const fallbackMobileAppUrl = process.env.VITE_MOBILE_APP_URL ?? '';
+const allowedHosts = (
+  process.env.VITE_ALLOWED_HOSTS ??
+  'mwmcrm.voicemeetme.net,localhost,127.0.0.1'
+)
+  .split(',')
+  .map((host) => host.trim())
+  .filter(Boolean);
 
 const mobileAppUrlPlugin: Plugin = {
   name: 'fieldforce-mobile-app-url',
@@ -153,7 +160,7 @@ export default defineConfig({
     port,
     strictPort: true,
     host: '0.0.0.0',
-    allowedHosts: true,
+    allowedHosts,
     https,
     fs: {
       strict: true,
@@ -163,7 +170,7 @@ export default defineConfig({
   preview: {
     port,
     host: '0.0.0.0',
-    allowedHosts: true,
+    allowedHosts,
     https,
     ...(apiProxy ? { proxy: apiProxy } : {}),
   },

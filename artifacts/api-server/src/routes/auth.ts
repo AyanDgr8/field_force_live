@@ -19,6 +19,7 @@ import {
 } from "@workspace/api-zod";
 import { signJwt, verifyJwt } from "../middlewares/auth.js";
 import {
+  loginOtpRecipients,
   sendLoginOtpEmail,
   sendPasswordChangedEmail,
   sendPasswordResetLinkEmail,
@@ -120,18 +121,18 @@ router.post("/auth/login", async (req, res): Promise<void> => {
     req.log.error({ err: error, userId: user.id }, "Failed to write OTP audit log");
   }
 
-  let otpRecipients: string[];
-  try {
-    otpRecipients = await sendLoginOtpEmail({
+  const otpRecipients = loginOtpRecipients(user.email);
+  // SMTP delivery is intentionally detached from the login request. Production
+  // mail servers can be slow or temporarily unreachable; the OTP is already
+  // persisted and audit-logged, so holding the HTTP response only makes the
+  // dashboard appear frozen. Delivery failures remain visible in API logs.
+  void sendLoginOtpEmail({
       to: user.email,
       code,
       recipientName: user.firstName,
-    });
-  } catch (error) {
-    req.log.error({ err: error, userId: user.id }, "Failed to send login OTP email");
-    res.status(502).json({ error: "Unable to send verification email. Please try again." });
-    return;
-  }
+    })
+    .then(() => req.log.info({ userId: user.id, recipients: otpRecipients.map(maskEmail) }, "Login OTP email sent"))
+    .catch(error => req.log.error({ err: error, userId: user.id }, "Failed to send login OTP email"));
 
   const data = LoginResponse.parse({
     loginToken,

@@ -32,6 +32,7 @@ module.exports = {
         USE_HTTPS: 'true',
         API_PROXY_TARGET: 'http://127.0.0.1:7070',
         API_PROXY_SECURE: 'false',
+        VITE_ALLOWED_HOSTS: 'mwmcrm.voicemeetme.net,localhost,127.0.0.1',
         SSL_KEY_PATH: 'ssl/privkey.pem',
         SSL_CERT_PATH: 'ssl/fullchain.pem',
       },
