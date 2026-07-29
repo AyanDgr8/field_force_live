@@ -49,6 +49,18 @@ const allowedHosts = [
 
 const mobileAppUrlPlugin: Plugin = {
   name: 'fieldforce-mobile-app-url',
+  configurePreviewServer(server) {
+    server.middlewares.use('/__mobile-app-url', (_req, res) => {
+      const appUrl = process.env.APP_URL?.replace(/\/+$/, '');
+      const url =
+        fallbackMobileAppUrl || (appUrl ? `${appUrl}/mobile-app` : '');
+
+      res.statusCode = url ? 200 : 503;
+      res.setHeader('Content-Type', 'application/json');
+      res.setHeader('Cache-Control', 'no-store');
+      res.end(JSON.stringify({ url }));
+    });
+  },
   configureServer(server) {
     server.middlewares.use('/__mobile-app-url', async (_req, res) => {
       let url = fallbackMobileAppUrl;
