@@ -199,7 +199,11 @@ export default defineConfig({
   preview: {
     port,
     host: '0.0.0.0',
-    allowedHosts,
+    // Production traffic is already constrained by OpenResty/Nginx and may
+    // arrive with a forwarded Host value that Vite's preview allowlist does
+    // not normalize consistently. Trust the production reverse proxy; keep
+    // the explicit host allowlist for the development server above.
+    allowedHosts: process.env.NODE_ENV === 'production' ? true : allowedHosts,
     https,
     ...(apiProxy || mobileAppProxy
       ? { proxy: { ...apiProxy, ...mobileAppProxy } }
