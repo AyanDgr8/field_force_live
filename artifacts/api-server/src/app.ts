@@ -8,10 +8,15 @@ import { startDevicePoller } from "./lib/devicePoller.js";
 
 const app: Express = express();
 
-const configuredOrigins = (process.env.CORS_ORIGIN ?? "")
+const configuredOrigins = [
+  process.env.CORS_ORIGIN,
+  process.env.APP_URL,
+]
+  .filter(Boolean)
+  .join(",")
   .split(",")
   .map((origin) => origin.trim().replace(/\/+$/, ""))
-  .filter(Boolean);
+  .filter((origin, index, origins) => Boolean(origin) && origins.indexOf(origin) === index);
 
 app.use(
   pinoHttp({
@@ -39,7 +44,8 @@ app.use(cors({
       callback(null, true);
       return;
     }
-    callback(new Error("Origin is not allowed by CORS"));
+    logger.warn({ origin, configuredOrigins }, "Browser origin rejected by CORS");
+    callback(new Error(`Origin ${origin} is not allowed by CORS`));
   },
   credentials: true,
 }));
