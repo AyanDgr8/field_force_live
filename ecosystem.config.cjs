@@ -36,6 +36,9 @@ module.exports = {
         API_PROXY_TARGET: 'http://127.0.0.1:7070',
         API_PROXY_SECURE: 'false',
         MOBILE_APP_PROXY_TARGET: 'http://127.0.0.1:8081',
+        APP_URL: 'https://mwmcrm.voicemeetme.net',
+        VITE_MOBILE_APP_URL:
+          'https://mwmcrm.voicemeetme.net/mobile-app',
         VITE_ALLOWED_HOSTS: 'mwmcrm.voicemeetme.net,localhost,127.0.0.1',
       },
     },
