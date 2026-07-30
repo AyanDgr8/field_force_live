@@ -70,7 +70,10 @@ function serveLandingPage(req, res, landingPageTemplate, appName) {
   const protocol = forwardedProto || 'https';
   const host = req.headers['x-forwarded-host'] || req.headers['host'];
   const baseUrl = `${protocol}://${host}`;
-  const expsUrl = `${host}`;
+  // Expo Go must request the manifest through the same public sub-path that
+  // Nginx Proxy Manager forwards to this server. Dropping /mobile-app sends
+  // Expo to the admin frontend at "/", which responds with a 404 manifest.
+  const expsUrl = `${host}${basePath}`;
 
   const html = landingPageTemplate
     .replace(/BASE_URL_PLACEHOLDER/g, baseUrl)
