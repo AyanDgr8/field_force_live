@@ -45,6 +45,15 @@ export function passwordResetRequestUrl(): string {
   return `${adminBaseUrl()}/reset-password`;
 }
 
+/** Public URL encoded in the QR code sent to newly created field agents. */
+export function mobileAppUrl(): string {
+  const configured = (process.env.MOBILE_APP_URL ?? "").replace(/\/+$/, "");
+  if (configured) return configured;
+
+  const publicOrigin = (process.env.APP_URL ?? "").replace(/\/+$/, "");
+  return publicOrigin ? `${publicOrigin}/mobile-app` : `${adminBaseUrl()}/mobile-app`;
+}
+
 export function passwordResetLinkUrl(userId: number, token: string): string {
   return `${adminBaseUrl()}/reset-password/${userId}/${token}`;
 }

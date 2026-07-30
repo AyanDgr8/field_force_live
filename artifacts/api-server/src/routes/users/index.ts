@@ -39,7 +39,7 @@ import {
 import { requireAuth } from "../../middlewares/auth.js";
 import { randomDelhiNcrCoord } from "../../lib/geo.js";
 import { sendPasswordChangedEmail, sendWelcomeEmail } from "../../lib/mailer.js";
-import { DEFAULT_USER_PASSWORD, loginUrl, passwordResetRequestUrl } from "../../lib/accounts.js";
+import { DEFAULT_USER_PASSWORD, loginUrl, mobileAppUrl, passwordResetRequestUrl } from "../../lib/accounts.js";
 
 const router: IRouter = Router();
 
@@ -157,6 +157,7 @@ router.post("/users", requireAuth, async (req, res): Promise<void> => {
         loginUrl: loginUrl(),
         resetUrl: passwordResetRequestUrl(),
         role: "Field Agent",
+        mobileAppUrl: mobileAppUrl(),
       });
     } catch (error) {
       req.log.error({ err: error, userId: user.id }, "Failed to send welcome email");

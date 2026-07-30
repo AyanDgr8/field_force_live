@@ -10,7 +10,7 @@ import {
   backgroundVerificationsTable, importJobsTable, deliveryRecordsTable,
 } from "@workspace/db";
 import { requireAuth } from "../middlewares/auth.js";
-import { DEFAULT_USER_PASSWORD, loginUrl, passwordResetRequestUrl } from "../lib/accounts.js";
+import { DEFAULT_USER_PASSWORD, loginUrl, mobileAppUrl, passwordResetRequestUrl } from "../lib/accounts.js";
 import { sendWelcomeEmail } from "../lib/mailer.js";
 import { purgeUser } from "../lib/userPurge.js";
 
@@ -208,6 +208,7 @@ router.post("/hierarchy/users", requireAuth, async (req, res): Promise<void> => 
       loginUrl: loginUrl(),
       resetUrl: passwordResetRequestUrl(),
       role: ROLE_LABELS[user.role] ?? user.role,
+      mobileAppUrl: user.role === "USER" ? mobileAppUrl() : undefined,
     });
   } catch (error) {
     welcomeEmailSent = false;

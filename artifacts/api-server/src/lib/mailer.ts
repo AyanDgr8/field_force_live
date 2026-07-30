@@ -1,4 +1,5 @@
 import nodemailer from "nodemailer";
+import QRCode from "qrcode";
 
 function required(name: "EMAIL_USER" | "EMAIL_PASSWORD"): string {
   const value = process.env[name];
@@ -67,10 +68,39 @@ export async function sendWelcomeEmail(options: {
   loginUrl: string;
   resetUrl: string;
   role?: string;
+  mobileAppUrl?: string;
 }): Promise<void> {
   const greeting = options.recipientName ? `Hi ${options.recipientName},` : "Hello,";
   const roleLine = options.role
     ? `<p style="margin:0 0 18px;color:#475569">Your account has been set up with the <b>${escapeHtml(options.role)}</b> role.</p>`
+    : "";
+  const mobileSetupText = options.mobileAppUrl
+    ? `\n\nMobile app setup:\nAndroid users: Expo Go\niOS users: Expo Go\n` +
+      `1. Install Expo Go from your phone's app store.\n` +
+      `2. Scan the QR code in this email with your phone camera.\n` +
+      `3. Open the link in Expo Go, allow the requested permissions, and sign in with the credentials above.\n` +
+      `App link: ${options.mobileAppUrl}\n`
+    : "";
+  const qrCode = options.mobileAppUrl
+    ? await QRCode.toBuffer(options.mobileAppUrl, {
+        type: "png", width: 300, margin: 2, errorCorrectionLevel: "M",
+      })
+    : null;
+  const mobileSetupHtml = options.mobileAppUrl
+    ? `<div style="border-top:1px solid #e2e8f0;margin-top:24px;padding-top:22px">` +
+      `<h3 style="margin:0 0 12px;color:#0f172a">Install and connect the mobile app</h3>` +
+      `<p style="margin:0 0 5px;color:#0f172a"><b>Android users:</b> Expo Go</p>` +
+      `<p style="margin:0 0 16px;color:#0f172a"><b>iOS users:</b> Expo Go</p>` +
+      `<ol style="margin:0 0 18px;padding-left:22px;color:#475569;line-height:1.7">` +
+      `<li>Install <b>Expo Go</b> from Google Play or the Apple App Store.</li>` +
+      `<li>Scan the QR code below using your phone camera.</li>` +
+      `<li>Open the link in Expo Go and allow the requested permissions.</li>` +
+      `<li>Sign in using the email and temporary password shown above.</li>` +
+      `</ol>` +
+      `<p style="margin:0 0 12px;text-align:center"><img src="cid:fieldforce-mobile-qr" width="260" height="260" ` +
+      `alt="QR code for the FieldForce Live mobile app" style="display:inline-block;width:260px;height:260px;max-width:100%;` +
+      `border:1px solid #e2e8f0;border-radius:12px" /></p>` +
+      `<p style="margin:0;text-align:center">${BUTTON(options.mobileAppUrl, "Open the mobile app")}</p></div>`
     : "";
 
   await transporter.sendMail({
@@ -82,7 +112,8 @@ export async function sendWelcomeEmail(options: {
       `Sign in at: ${options.loginUrl}\n` +
       `Email: ${options.loginEmail}\n` +
       `Temporary password: ${options.password}\n\n` +
-      `For your security, change this password after your first sign-in: ${options.resetUrl}\n`,
+      `For your security, change this password after your first sign-in: ${options.resetUrl}\n` +
+      mobileSetupText,
     html:
       SHELL_OPEN +
       `<h2 style="margin:0 0 10px;font-size:22px;color:#0f172a">${escapeHtml(greeting)}</h2>` +
@@ -96,7 +127,16 @@ export async function sendWelcomeEmail(options: {
       `<p style="margin:0 0 22px">${BUTTON(options.loginUrl, "Sign in to FieldForce")}</p>` +
       `<p style="margin:0;color:#64748b;font-size:13px">This password is shared with everyone who joins, so please ` +
       `<a href="${escapeHtml(options.resetUrl)}" style="color:#b45309">change it</a> right after your first sign-in.</p>` +
+      mobileSetupHtml +
       SHELL_CLOSE,
+    attachments: qrCode
+      ? [{
+          filename: "fieldforce-mobile-qr.png",
+          content: qrCode,
+          cid: "fieldforce-mobile-qr",
+          contentType: "image/png",
+        }]
+      : [],
   });
 }
 
