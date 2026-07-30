@@ -29,13 +29,14 @@ module.exports = {
         PORT: '7075',
         BASE_PATH: '/',
         APP_ROOT: __dirname,
-        USE_HTTPS: 'true',
+        // Nginx Proxy Manager terminates public TLS. Keep the internal
+        // container-to-host connection on HTTP to avoid managing the same
+        // certificate in both NPM and the Node/Vite process.
+        USE_HTTPS: 'false',
         API_PROXY_TARGET: 'http://127.0.0.1:7070',
         API_PROXY_SECURE: 'false',
         MOBILE_APP_PROXY_TARGET: 'http://127.0.0.1:8081',
         VITE_ALLOWED_HOSTS: 'mwmcrm.voicemeetme.net,localhost,127.0.0.1',
-        SSL_KEY_PATH: 'ssl/privkey.pem',
-        SSL_CERT_PATH: 'ssl/fullchain.pem',
       },
     },
     {
