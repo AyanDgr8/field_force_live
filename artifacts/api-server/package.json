@@ -10,6 +10,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "seed": "tsx src/scripts/seed.ts",
     "create-super-admin": "tsx src/scripts/createSuperAdmin.ts",
+    "resend-welcome": "tsx src/scripts/sendWelcomeEmails.ts",
     "purge-deleted-users": "tsx src/scripts/purgeDeletedUsers.ts"
   },
   "dependencies": {
