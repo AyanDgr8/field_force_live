@@ -1,11 +1,11 @@
 import { Router, type IRouter } from "express";
-import { eq, or } from "drizzle-orm";
+import { and, eq, isNull, or } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { v4 as uuidv4 } from "uuid";
 import jwt from "jsonwebtoken";
 import { z } from "zod";
 import { db } from "@workspace/db";
-import { credentialsTable, otpTokensTable, usersTable } from "@workspace/db";
+import { credentialsTable, otpTokensTable, sessionsTable, usersTable } from "@workspace/db";
 import {
   MobileLoginBody,
   MobileLoginResponse,
@@ -73,6 +73,25 @@ router.post("/user/auth/login", async (req, res): Promise<void> => {
 
   const ok = await bcrypt.compare(password, cred.passwordHash);
   if (!ok) { res.status(401).json({ error: "Invalid credentials" }); return; }
+
+  // Attendance currently starts with a successful credential login. Keep this
+  // idempotent so reconnecting or signing in twice does not create overlapping
+  // attendance sessions. The first GPS ping will supply the live map position.
+  const now = new Date();
+  const [openSession] = await db.select().from(sessionsTable)
+    .where(and(eq(sessionsTable.userId, user.id), isNull(sessionsTable.logoutAt)))
+    .limit(1);
+  if (!openSession) {
+    await db.insert(sessionsTable).values({
+      userId: user.id,
+      loginAt: now,
+      loginLat: 0,
+      loginLng: 0,
+    });
+  }
+  await db.update(usersTable)
+    .set({ liveStatus: "ON_SHIFT_IDLE", liveStatusSince: now })
+    .where(eq(usersTable.id, user.id));
 
   const deviceToken = signDeviceJwt({ userId: user.id, role: "USER" });
   res.json(MobileLoginResponse.parse({

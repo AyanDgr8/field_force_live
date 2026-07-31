@@ -14,11 +14,11 @@ import React, {
   useCallback,
   useContext,
   useEffect,
+  useRef,
   useState,
 } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { enqueue } from '@/lib/offlineQueue';
-import { apiPost } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { useLocation } from '@/context/LocationContext';
 
@@ -34,7 +34,7 @@ interface ShiftState {
 }
 
 interface ShiftContextValue extends ShiftState {
-  clockIn: (qrToken: string) => Promise<void>;
+  clockIn: () => Promise<void>;
   clockOut: () => Promise<void>;
   setBusy: () => Promise<void>;
   setIdle: () => Promise<void>;
@@ -52,6 +52,7 @@ const ShiftContext = createContext<ShiftContextValue | null>(null);
 export function ShiftProvider({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
   const { getCoords } = useLocation();
+  const previousUserIdRef = useRef<number | null>(null);
 
   const [state, setState] = useState<ShiftState>({
     status: 'CLOCKED_OUT',
@@ -89,28 +90,25 @@ export function ShiftProvider({ children }: { children: React.ReactNode }) {
 
   // ── Clock In ──────────────────────────────────────────────────────────────
 
-  const clockIn = useCallback(async (qrToken: string) => {
+  const clockIn = useCallback(async () => {
     if (!user) return;
     setState((s) => ({ ...s, loading: true, error: null }));
     try {
       const coords = await getCoords();
-      if (!coords) throw new Error('A fresh GPS location is required for attendance.');
-      const result = await apiPost<{ accepted: boolean; clockedInAt: string; message?: string }>(
-        '/api/user/attendance/scan', {
+      const now = new Date().toISOString();
+      await enqueue('/api/ingest/session', {
         userId: user.id,
-        qrToken,
-        latitude: coords.latitude,
-        longitude: coords.longitude,
-        accuracyM: coords.accuracy ?? null,
+        event: 'LOGIN',
+        latitude: coords?.latitude ?? 0,
+        longitude: coords?.longitude ?? 0,
+        at: now,
       });
-      if (!result.accepted) throw new Error(result.message ?? 'Attendance was not accepted.');
-      const now = result.clockedInAt;
       // Also set status to IDLE on server
       await enqueue('/api/user/status', {
         userId: user.id,
         status: 'IDLE',
-        lat: coords.latitude,
-        lng: coords.longitude,
+        lat: coords?.latitude ?? 0,
+        lng: coords?.longitude ?? 0,
         at: now,
       });
       await persist('IDLE', now);
@@ -124,6 +122,16 @@ export function ShiftProvider({ children }: { children: React.ReactNode }) {
       throw e;
     }
   }, [user, getCoords, persist]);
+
+  // A newly authenticated rider is on shift immediately. The backend records
+  // attendance during credential login; this keeps the local shift UI in sync.
+  useEffect(() => {
+    const nextUserId = user?.id ?? null;
+    if (nextUserId != null && previousUserIdRef.current !== nextUserId) {
+      void clockIn();
+    }
+    previousUserIdRef.current = nextUserId;
+  }, [user?.id, clockIn]);
 
   // ── Clock Out ─────────────────────────────────────────────────────────────
 

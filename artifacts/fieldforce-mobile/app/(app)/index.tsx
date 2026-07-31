@@ -2,7 +2,7 @@
  * Home screen — map view with stop pins + shift Login/Logout bar.
  */
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -10,10 +10,8 @@ import {
   Pressable,
   StyleSheet,
   Text,
-  Modal,
   View,
 } from 'react-native';
-import { CameraView, useCameraPermissions, type BarcodeScanningResult } from 'expo-camera';
 import { Feather } from '@expo/vector-icons';
 import { useQuery } from '@tanstack/react-query';
 import * as Haptics from 'expo-haptics';
@@ -134,48 +132,18 @@ const mp = StyleSheet.create({
 
 function ShiftBar({ colors }: { colors: ReturnType<typeof useColors> }) {
   const { status, loading, clockedInAt, clockIn, clockOut, setBusy, setIdle } = useShift();
-  const [scannerOpen, setScannerOpen] = useState(false);
-  const [scanLocked, setScanLocked] = useState(false);
-  const scanLockedRef = useRef(false);
-  const [cameraPermission, requestCameraPermission] = useCameraPermissions();
 
   const clockedInTime = clockedInAt
     ? new Date(clockedInAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
     : null;
 
-  const handleClockIn = async (qrToken: string) => {
-    if (scanLockedRef.current) return;
+  const handleClockIn = async () => {
     try {
-      scanLockedRef.current = true;
-      setScanLocked(true);
-      await clockIn(qrToken);
-      setScannerOpen(false);
+      await clockIn();
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } catch (e) {
       Alert.alert('Clock-in failed', (e as Error).message);
-    } finally {
-      setTimeout(() => {
-        scanLockedRef.current = false;
-        setScanLocked(false);
-      }, 1200);
     }
-  };
-
-  const openScanner = async () => {
-    if (!cameraPermission?.granted) {
-      const result = await requestCameraPermission();
-      if (!result.granted) {
-        Alert.alert('Camera permission required', 'Allow camera access to scan your assigned hub QR code.');
-        return;
-      }
-    }
-    scanLockedRef.current = false;
-    setScanLocked(false);
-    setScannerOpen(true);
-  };
-
-  const onBarcodeScanned = ({ data }: BarcodeScanningResult) => {
-    if (!scanLockedRef.current && data) void handleClockIn(data.trim());
   };
 
   const handleClockOut = () => {
@@ -228,12 +196,12 @@ function ShiftBar({ colors }: { colors: ReturnType<typeof useColors> }) {
           /* ── Clock In ── */
           <Pressable
             style={({ pressed }) => [sb.btn, { backgroundColor: colors.success, opacity: pressed ? 0.85 : 1 }]}
-            onPress={openScanner}
+            onPress={() => void handleClockIn()}
             disabled={loading}
           >
             {loading
               ? <ActivityIndicator color="#fff" size="small" />
-              : <><Feather name="camera" size={14} color="#fff" /><Text style={sb.btnTxt}>Scan Hub QR</Text></>}
+              : <><Feather name="log-in" size={14} color="#fff" /><Text style={sb.btnTxt}>Clock In</Text></>}
           </Pressable>
         ) : (
           <>
@@ -273,24 +241,6 @@ function ShiftBar({ colors }: { colors: ReturnType<typeof useColors> }) {
           </>
         )}
       </View>
-      <Modal visible={scannerOpen} animationType="slide" onRequestClose={() => setScannerOpen(false)}>
-        <View style={{ flex: 1, backgroundColor: '#000' }}>
-          <CameraView
-            style={{ flex: 1 }}
-            facing="back"
-            barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
-            onBarcodeScanned={scanLocked ? undefined : onBarcodeScanned}
-          />
-          <View style={{ position: 'absolute', left: 24, right: 24, bottom: 48, gap: 12 }}>
-            <Text style={{ color: '#fff', textAlign: 'center', fontSize: 16, fontWeight: '600' }}>
-              Scan the QR code at your assigned delivery hub
-            </Text>
-            <Pressable onPress={() => setScannerOpen(false)} style={{ backgroundColor: '#fff', padding: 14, borderRadius: 10 }}>
-              <Text style={{ textAlign: 'center', fontWeight: '700' }}>Cancel</Text>
-            </Pressable>
-          </View>
-        </View>
-      </Modal>
     </View>
   );
 }

@@ -70,7 +70,11 @@ router.post("/ingest/session", async (req, res): Promise<void> => {
   }
 
   if (event === "LOGIN") {
-    const session = await insertReturning(sessionsTable, {
+    const [existing] = await db.select().from(sessionsTable)
+      .where(and(eq(sessionsTable.userId, userId), isNull(sessionsTable.logoutAt)))
+      .orderBy(desc(sessionsTable.loginAt))
+      .limit(1);
+    const session = existing ?? await insertReturning(sessionsTable, {
       userId,
       loginAt: at,
       loginLat: latitude,
@@ -79,6 +83,9 @@ router.post("/ingest/session", async (req, res): Promise<void> => {
       logoutLat: null,
       logoutLng: null,
     });
+    await db.update(usersTable)
+      .set({ liveStatus: "ON_SHIFT_IDLE", liveStatusSince: at })
+      .where(eq(usersTable.id, userId));
     res.status(201).json(IngestSessionResponse.parse(session));
   } else {
     // LOGOUT: find most recent open session
