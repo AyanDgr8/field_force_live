@@ -17,12 +17,16 @@ export interface PickedLocation {
   latitude: number | null;
   longitude: number | null;
   address: string;
+  city?: string | null;
+  state?: string | null;
 }
 
 interface PlaceMatch {
   label: string;
   latitude: number;
   longitude: number;
+  city: string | null;
+  state: string | null;
 }
 
 async function geoApi<T>(path: string): Promise<T> {
@@ -104,12 +108,17 @@ export function LocationPicker({ value, onChange, radiusM = 200, className }: Lo
 
       const seq = ++lookupSeq.current;
       setResolving(true);
-      geoApi<{ address: string | null }>(
+      geoApi<{ address: string | null; city: string | null; state: string | null }>(
         `/api/geo/reverse?latitude=${latitude}&longitude=${longitude}`,
       )
         .then(body => {
           if (seq !== lookupSeq.current) return;
-          if (body.address) onChange({ ...picked, address: body.address });
+          onChange({
+            ...picked,
+            ...(body.address ? { address: body.address } : {}),
+            city: body.city,
+            state: body.state,
+          });
         })
         .catch(() => {
           if (seq !== lookupSeq.current) return;
@@ -127,7 +136,13 @@ export function LocationPicker({ value, onChange, radiusM = 200, className }: Lo
     (place: PlaceMatch) => {
       lookupSeq.current++;
       setResolving(false);
-      onChange({ latitude: place.latitude, longitude: place.longitude, address: place.label });
+      onChange({
+        latitude: place.latitude,
+        longitude: place.longitude,
+        address: place.label,
+        city: place.city,
+        state: place.state,
+      });
       setResults(null);
       setQuery(place.label);
       mapRef.current?.panTo({ lat: place.latitude, lng: place.longitude });

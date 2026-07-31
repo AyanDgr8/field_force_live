@@ -44,7 +44,7 @@ router.get("/geo/reverse", requireAuth, async (req, res): Promise<void> => {
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
 
   try {
-    res.json({ address: await reverseGeocode(parsed.data.latitude, parsed.data.longitude) });
+    res.json(await reverseGeocode(parsed.data.latitude, parsed.data.longitude));
   } catch (error) {
     req.log.warn({ err: error }, "Reverse geocoding failed");
     res.status(502).json({ error: "Address lookup is unavailable right now" });

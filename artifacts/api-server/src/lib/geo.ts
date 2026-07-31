@@ -77,6 +77,13 @@ export interface PlaceMatch {
   label: string;
   latitude: number;
   longitude: number;
+  city: string | null;
+  state: string | null;
+}
+export interface ResolvedAddress {
+  address: string | null;
+  city: string | null;
+  state: string | null;
 }
 
 /** Optional map-viewport bias, so "Sector 62" resolves near the visible area. */
@@ -117,21 +124,29 @@ export async function searchPlaces(
       results: Array<{
         formatted_address: string;
         geometry: { location: { lat: number; lng: number } };
+        address_components: Array<{ long_name: string; types: string[] }>;
       }>;
     };
     if (data.status !== "OK") return [];
 
-    return data.results.slice(0, limit).map(result => ({
-      label: result.formatted_address,
-      latitude: result.geometry.location.lat,
-      longitude: result.geometry.location.lng,
-    }));
+    return data.results.slice(0, limit).map(result => {
+      const component = (...types: string[]) =>
+        result.address_components.find(value => types.some(type => value.types.includes(type)))?.long_name ?? null;
+      return {
+        label: result.formatted_address,
+        latitude: result.geometry.location.lat,
+        longitude: result.geometry.location.lng,
+        city: component("locality", "postal_town", "administrative_area_level_2"),
+        state: component("administrative_area_level_1"),
+      };
+    });
   }
 
   const url = new URL("https://nominatim.openstreetmap.org/search");
   url.searchParams.set("q", query);
   url.searchParams.set("format", "jsonv2");
   url.searchParams.set("limit", String(limit));
+  url.searchParams.set("addressdetails", "1");
   if (bias) {
     url.searchParams.set("viewbox", `${bias.swLng},${bias.neLat},${bias.neLng},${bias.swLat}`);
   }
@@ -139,11 +154,16 @@ export async function searchPlaces(
   const response = await fetch(url.toString(), { headers: NOMINATIM_HEADERS });
   if (!response.ok) return [];
 
-  const data = (await response.json()) as Array<{ display_name: string; lat: string; lon: string }>;
+  const data = (await response.json()) as Array<{
+    display_name: string; lat: string; lon: string;
+    address?: { city?: string; town?: string; village?: string; municipality?: string; county?: string; state?: string };
+  }>;
   return data.map(result => ({
     label: result.display_name,
     latitude: Number(result.lat),
     longitude: Number(result.lon),
+    city: result.address?.city ?? result.address?.town ?? result.address?.village ?? result.address?.municipality ?? result.address?.county ?? null,
+    state: result.address?.state ?? null,
   }));
 }
 
@@ -155,7 +175,7 @@ export async function searchPlaces(
 export async function reverseGeocode(
   latitude: number,
   longitude: number,
-): Promise<string | null> {
+): Promise<ResolvedAddress> {
   const apiKey = process.env.GOOGLE_MAPS_SERVER_KEY;
 
   if (apiKey) {
@@ -164,14 +184,24 @@ export async function reverseGeocode(
     url.searchParams.set("key", apiKey);
 
     const response = await fetch(url.toString());
-    if (!response.ok) return null;
+    if (!response.ok) return { address: null, city: null, state: null };
 
     const data = (await response.json()) as {
       status: string;
-      results: Array<{ formatted_address: string }>;
+      results: Array<{
+        formatted_address: string;
+        address_components: Array<{ long_name: string; types: string[] }>;
+      }>;
     };
-    if (data.status !== "OK" || data.results.length === 0) return null;
-    return data.results[0].formatted_address;
+    if (data.status !== "OK" || data.results.length === 0) return { address: null, city: null, state: null };
+    const result = data.results[0];
+    const component = (...types: string[]) =>
+      result.address_components.find(value => types.some(type => value.types.includes(type)))?.long_name ?? null;
+    return {
+      address: result.formatted_address,
+      city: component("locality", "postal_town", "administrative_area_level_2"),
+      state: component("administrative_area_level_1"),
+    };
   }
 
   const url = new URL("https://nominatim.openstreetmap.org/reverse");
@@ -180,8 +210,15 @@ export async function reverseGeocode(
   url.searchParams.set("format", "jsonv2");
 
   const response = await fetch(url.toString(), { headers: NOMINATIM_HEADERS });
-  if (!response.ok) return null;
+  if (!response.ok) return { address: null, city: null, state: null };
 
-  const data = (await response.json()) as { display_name?: string };
-  return data.display_name ?? null;
+  const data = (await response.json()) as {
+    display_name?: string;
+    address?: { city?: string; town?: string; village?: string; municipality?: string; county?: string; state?: string };
+  };
+  return {
+    address: data.display_name ?? null,
+    city: data.address?.city ?? data.address?.town ?? data.address?.village ?? data.address?.municipality ?? data.address?.county ?? null,
+    state: data.address?.state ?? null,
+  };
 }

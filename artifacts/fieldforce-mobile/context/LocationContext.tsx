@@ -67,7 +67,7 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
   const [permissionGranted, setPermissionGranted] = useState(false);
   const [pendingSync, setPendingSync] = useState(0);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const pendingPingsRef = useRef<object[]>([]);
+  const collectingRef = useRef(false);
 
   // Load the durable queue and surface its size immediately. Delivery waits
   // until AuthContext has restored the signed-in user.
@@ -138,33 +138,28 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  // Hand the batch to the durable queue, which persists it before attempting the
-  // network and retries later if the agent is out of signal. No re-buffering
-  // here — losing the app process no longer loses the pings.
-  const flushPings = useCallback(async () => {
-    if (!user || pendingPingsRef.current.length === 0) return;
-    const toSend = [...pendingPingsRef.current];
-    pendingPingsRef.current = [];
-    await enqueue('/api/ingest/location', { pings: toSend });
-  }, [user]);
-
-  // Collect one ping and buffer it
+  // Persist and send every reading immediately. The admin map polls every five
+  // seconds, so batching three 30-second readings made a moving rider appear
+  // frozen for up to a minute. enqueue remains durable when connectivity drops.
   const collectPing = useCallback(async () => {
-    if (!user) return;
-    const c = await getCoords();
-    if (!c) return;
-    pendingPingsRef.current.push({
-      userId: user.id,
-      latitude: c.latitude,
-      longitude: c.longitude,
-      accuracyM: c.accuracy ?? undefined,
-      recordedAt: new Date().toISOString(),
-    });
-    // flush every 3 pings or if buffer grows too large
-    if (pendingPingsRef.current.length >= 3) {
-      await flushPings();
+    if (!user || collectingRef.current) return;
+    collectingRef.current = true;
+    try {
+      const c = await getCoords();
+      if (!c) return;
+      await enqueue('/api/ingest/location', {
+        pings: [{
+          userId: user.id,
+          latitude: c.latitude,
+          longitude: c.longitude,
+          accuracyM: c.accuracy ?? undefined,
+          recordedAt: new Date().toISOString(),
+        }],
+      });
+    } finally {
+      collectingRef.current = false;
     }
-  }, [user, getCoords, flushPings]);
+  }, [user, getCoords]);
 
   // Start/stop the polling interval based on user auth + app foreground
   useEffect(() => {
@@ -176,23 +171,23 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    // poll every 30 s
-    collectPing();
-    intervalRef.current = setInterval(collectPing, 30_000);
+    // Match the admin map's refresh closely enough for visibly live movement.
+    void collectPing();
+    intervalRef.current = setInterval(() => void collectPing(), 5_000);
 
     const handleAppState = (nextState: AppStateStatus) => {
       if (nextState === 'background' || nextState === 'inactive') {
-        flushPings();
+        void flushQueue();
         if (intervalRef.current) {
           clearInterval(intervalRef.current);
           intervalRef.current = null;
         }
       } else if (nextState === 'active' && !intervalRef.current) {
-        collectPing();
+        void collectPing();
         // Coming back to foreground is the cheapest signal that connectivity may
         // have returned, so retry anything stranded while backgrounded.
         void flushQueue();
-        intervalRef.current = setInterval(collectPing, 30_000);
+        intervalRef.current = setInterval(() => void collectPing(), 5_000);
       }
     };
 
@@ -203,9 +198,9 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
         clearInterval(intervalRef.current);
         intervalRef.current = null;
       }
-      flushPings();
+      void flushQueue();
     };
-  }, [user, permissionGranted, collectPing, flushPings]);
+  }, [user, permissionGranted, collectPing]);
 
   const value = useMemo(() => ({
     coords,

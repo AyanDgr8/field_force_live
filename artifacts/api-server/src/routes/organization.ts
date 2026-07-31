@@ -60,6 +60,22 @@ function parseCsv(text: string): Record<string, string>[] {
   return rows.map(values => Object.fromEntries(headers.map((h, i) => [h.trim(), values[i] ?? ""])));
 }
 
+function normalizedHeader(value: unknown) {
+  return String(value ?? "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "");
+}
+
+function spreadsheetValue(row: Record<string, unknown>, aliases: string[]) {
+  const wanted = new Set(aliases.map(normalizedHeader));
+  const entry = Object.entries(row).find(([header]) => wanted.has(normalizedHeader(header)));
+  return String(entry?.[1] ?? "").trim().replace(/\.0+$/, "");
+}
+
+function splitPersonName(value: string) {
+  const parts = value.trim().split(/\s+/).filter(Boolean);
+  if (parts.length < 2) return { firstName: parts[0] || "Biker", lastName: "-" };
+  return { firstName: parts.slice(0, -1).join(" "), lastName: parts.at(-1)! };
+}
+
 router.get("/organization/bootstrap", requireAuth, async (req, res): Promise<void> => {
   const me = await actor(req.adminUserId!);
   if (!me) { res.status(403).json({ error: "Admin access required" }); return; }
@@ -232,6 +248,119 @@ router.get("/hierarchy/users", requireAuth, async (req, res): Promise<void> => {
     return { ...user, stateIds: stateScopes.map(scope => scope.stateId), hubIds: hubScopes.map(scope => scope.hubId) };
   }));
   res.json(enriched);
+});
+
+router.post("/hierarchy/users/import", requireAuth, async (req, res): Promise<void> => {
+  const me = await actor(req.adminUserId!);
+  const body = z.object({
+    fileName: z.string().min(1),
+    base64: z.string().min(1),
+  }).safeParse(req.body);
+  if (!me || !body.success) {
+    res.status(!me ? 403 : 400).json({ error: body.success ? "Admin access required" : body.error.message });
+    return;
+  }
+  if (!mayCreate(me.role as Role, "USER")) {
+    res.status(403).json({ error: "Your role cannot import biker accounts" });
+    return;
+  }
+
+  try {
+    const workbook = XLSX.read(Buffer.from(body.data.base64, "base64"));
+    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+    if (!sheet) { res.status(400).json({ error: "The workbook does not contain a worksheet" }); return; }
+    const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, { defval: "", raw: false });
+    const detectedHeaders = (XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, defval: "", raw: false })[0] ?? []).map(String);
+    if (!detectedHeaders.some(header => ["employeeid", "fhrid", "flipkartid"].includes(normalizedHeader(header)))) {
+      res.status(422).json({ error: "Employee ID, FHRID, or Flipkart ID column is required", detectedHeaders });
+      return;
+    }
+
+    const allStates = await db.select().from(statesTable).where(eq(statesTable.customerId, me.customerId));
+    const allHubs = await db.select().from(hubsTable).where(eq(hubsTable.customerId, me.customerId));
+    const allowedStates = me.role === "SUPER_ADMIN" ? allStates : allStates.filter(state => me.stateIds.includes(state.id));
+    const allowedHubs = me.role === "SUPER_ADMIN" ? allHubs : me.role === "STATE_ADMIN"
+      ? allHubs.filter(hub => hub.stateId != null && me.stateIds.includes(hub.stateId))
+      : allHubs.filter(hub => me.hubIds.includes(hub.id));
+    const warnings: string[] = [];
+    let createdRows = 0, updatedRows = 0, skippedRows = 0;
+
+    for (const [index, row] of rows.entries()) {
+      const rowNumber = index + 2;
+      const employeeId = spreadsheetValue(row, ["Employee ID", "Employee Code", "FHRID", "Flipkart ID"]);
+      if (!employeeId) { skippedRows++; warnings.push(`Row ${rowNumber}: missing Employee ID`); continue; }
+      const fullName = spreadsheetValue(row, ["Name", "Employee Name", "Biker Name", "Agent Name"]);
+      const stateName = spreadsheetValue(row, ["State", "State Name"]);
+      const hubName = spreadsheetValue(row, ["Hub", "Hub Name", "Delivery Hub"]);
+      const state = allowedStates.find(value => normalizedHeader(value.name) === normalizedHeader(stateName));
+      const hub = allowedHubs.find(value =>
+        normalizedHeader(value.name) === normalizedHeader(hubName) &&
+        (!state || value.stateId == null || value.stateId === state.id)
+      );
+      if (!state || !hub) {
+        skippedRows++;
+        warnings.push(`Row ${rowNumber} (${employeeId}): ${!state ? `state "${stateName || "blank"}"` : `hub "${hubName || "blank"}"`} is not configured or outside your scope`);
+        continue;
+      }
+
+      const [existing] = await db.select().from(usersTable).where(and(
+        eq(usersTable.customerId, me.customerId),
+        isNull(usersTable.deletedAt),
+        or(eq(usersTable.flipkartId, employeeId), eq(usersTable.employeeCode, employeeId)),
+      )).limit(1);
+      const parsedName = splitPersonName(fullName);
+      if (existing) {
+        if (existing.role !== "USER") {
+          skippedRows++; warnings.push(`Row ${rowNumber} (${employeeId}): ID belongs to an administrator`);
+          continue;
+        }
+        await db.update(usersTable).set({
+          ...(fullName ? parsedName : {}),
+          stateId: state.id, hubId: hub.id, flipkartId: employeeId,
+        }).where(eq(usersTable.id, existing.id));
+        updatedRows++;
+        continue;
+      }
+
+      const user = await insertReturning(usersTable, {
+        customerId: me.customerId,
+        parentUserId: me.id,
+        ...parsedName,
+        gender: "OTHER",
+        employeeCode: employeeId,
+        phoneNumber: `UNSET-${employeeId}`,
+        email: `${employeeId.toLowerCase()}@biker-import.invalid`,
+        role: "USER",
+        status: "INVITED",
+        stateId: state.id,
+        hubId: hub.id,
+        flipkartId: employeeId,
+      });
+      await db.insert(credentialsTable).values({
+        userId: user.id,
+        username: user.employeeCode,
+        passwordHash: await bcrypt.hash(DEFAULT_USER_PASSWORD, 10),
+      });
+      const token = uuidv4();
+      await db.insert(onboardingInvitesTable).values({ userId: user.id, token, channel: "EMAIL", deepLink: `/onboarding/${token}` });
+      createdRows++;
+    }
+
+    const limitedWarnings = warnings.slice(0, 50);
+    if (warnings.length > limitedWarnings.length) limitedWarnings.push(`${warnings.length - limitedWarnings.length} additional warnings omitted`);
+    res.json({
+      fileName: body.data.fileName,
+      detectedHeaders,
+      totalRows: rows.length,
+      createdRows,
+      updatedRows,
+      skippedRows,
+      warnings: limitedWarnings,
+    });
+  } catch (error) {
+    req.log.warn({ err: error }, "Unable to import biker workbook");
+    res.status(400).json({ error: "Unable to read biker workbook. Upload a valid .xlsx or .xls file." });
+  }
 });
 
 router.patch("/hierarchy/users/:id", requireAuth, async (req, res): Promise<void> => {

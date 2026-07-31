@@ -9,6 +9,7 @@ export const hubsTable = mysqlTable("hubs", {
   stateId: int("state_id"),
   name: text("name").notNull(),
   code: varchar("code", { length: 64 }).notNull(),
+  city: text("city"),
   qrToken: varchar("qr_token", { length: 128 }).notNull().unique(),
   address: text("address"),
   latitude: double("latitude").notNull(),
