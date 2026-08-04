@@ -48,6 +48,9 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const fleetRoutes = ['/bikers', '/vehicles', '/users'];
   const fleetActive = fleetRoutes.some(route => location.startsWith(route));
   const [fleetOpen, setFleetOpen] = useState(fleetActive);
+  const adminConfigurationRoutes = ['/super-admins', '/state-admins', '/hub-admins'];
+  const adminConfigurationActive = adminConfigurationRoutes.some(route => location.startsWith(route));
+  const [adminConfigurationOpen, setAdminConfigurationOpen] = useState(adminConfigurationActive);
 
   useEffect(() => {
     if (isError) {
@@ -66,6 +69,10 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (fleetActive) setFleetOpen(true);
   }, [fleetActive]);
+
+  useEffect(() => {
+    if (adminConfigurationActive) setAdminConfigurationOpen(true);
+  }, [adminConfigurationActive]);
 
   if (isLoading) {
     return (
@@ -140,9 +147,33 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               <NavItem href="/users" icon={<Users className="w-4 h-4" />} label="Users" />
             </div>
           )}
-          {user.role === 'SUPER_ADMIN' && <NavItem href="/super-admins" icon={<Crown className="w-5 h-5" />} label="Super Admins" />}
-          {['SUPER_ADMIN'].includes(user.role) && <NavItem href="/state-admins" icon={<MapPinned className="w-5 h-5" />} label="State Admins" />}
-          {['SUPER_ADMIN', 'STATE_ADMIN'].includes(user.role) && <NavItem href="/hub-admins" icon={<UserCog className="w-5 h-5" />} label="Hub Admins" />}
+          {['SUPER_ADMIN', 'STATE_ADMIN'].includes(user.role) && (
+            <>
+              <button
+                type="button"
+                onClick={() => setAdminConfigurationOpen(open => !open)}
+                aria-expanded={adminConfigurationOpen}
+                aria-controls="admin-configuration-navigation"
+                className={cn(
+                  "group flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left text-sm font-medium transition-all duration-150",
+                  adminConfigurationActive
+                    ? "border-amber-300/50 bg-sidebar-primary text-sidebar-primary-foreground shadow-lg shadow-black/15"
+                    : "border-transparent text-sidebar-foreground/70 hover:border-sidebar-border hover:bg-sidebar-accent hover:text-sidebar-foreground",
+                )}
+              >
+                <UserCog className="h-5 w-5 shrink-0" />
+                <span className="flex-1">Admin Configuration</span>
+                <ChevronDown className={cn("h-4 w-4 transition-transform", adminConfigurationOpen && "rotate-180")} />
+              </button>
+              {adminConfigurationOpen && (
+                <div id="admin-configuration-navigation" className="ml-4 flex flex-col gap-1 border-l border-sidebar-border pl-2">
+                  {user.role === 'SUPER_ADMIN' && <NavItem href="/super-admins" icon={<Crown className="w-4 h-4" />} label="Super Admins" />}
+                  {user.role === 'SUPER_ADMIN' && <NavItem href="/state-admins" icon={<MapPinned className="w-4 h-4" />} label="State Admins" />}
+                  <NavItem href="/hub-admins" icon={<UserCog className="w-4 h-4" />} label="Hub Admins" />
+                </div>
+              )}
+            </>
+          )}
           <NavItem href="/attendance" icon={<CalendarDays className="w-5 h-5" />} label="Attendance" />
           <NavItem href="/alerts" icon={<AlertTriangle className="w-5 h-5" />} label="Mobile Alerts" />
           <button
