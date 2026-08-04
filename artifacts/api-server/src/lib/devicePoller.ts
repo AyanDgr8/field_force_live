@@ -16,6 +16,7 @@ import {
   trackedDevicesTable,
   deviceCategoriesTable,
   locationPingsTable,
+  vehiclesTable,
 } from "@workspace/db";
 import { eq, and, sql } from "drizzle-orm";
 import { decrypt, isUsingDevFallbackKey } from "./crypto.js";
@@ -31,7 +32,7 @@ const CONNECTORS: Record<string, GpsConnector> = {
 };
 
 const MAX_CONSECUTIVE_FAILURES = 5;
-const MIN_INTERVAL_MS = 10_000;
+const MIN_INTERVAL_MS = 3_000;
 const MAX_INTERVAL_MS = 300_000;
 
 const timers = new Map<number, ReturnType<typeof setTimeout>>();
@@ -64,8 +65,11 @@ export function stopDevicePoller(): void {
 // Called externally to schedule a specific account (e.g. after creation/edit).
 export function scheduleAccountPoller(accountId: number, intervalMs: number): void {
   clearAccountTimer(accountId);
-  const jitter = Math.random() * 10_000;
   const effective = Math.min(Math.max(intervalMs, MIN_INTERVAL_MS), MAX_INTERVAL_MS);
+  // Jitter is proportional so it still de-synchronises accounts on long
+  // intervals without swamping a short one — a flat 0-10s spread would turn a
+  // 3s interval into anything from 3s to 13s.
+  const jitter = Math.random() * Math.min(effective * 0.2, 10_000);
   const t = setTimeout(() => runAndReschedule(accountId), effective + jitter);
   timers.set(accountId, t);
 }
@@ -195,6 +199,97 @@ export async function processDevicePings(
   }
 }
 
+/** Map the vendor's free-text `type` onto the fleet registry's vehicle types. */
+function toVehicleType(vendorType: string | null | undefined): string {
+  const t = (vendorType ?? "").toLowerCase();
+  if (/bike|bicycle|motorcycle|motorbike|scooter|two.?wheeler/.test(t)) return "TWO_WHEELER";
+  if (/auto|rickshaw|three.?wheeler|tuk/.test(t)) return "THREE_WHEELER";
+  if (/car|truck|van|bus|lorry|taxi|jeep|tempo|four.?wheeler/.test(t)) return "FOUR_WHEELER";
+  return "TWO_WHEELER";
+}
+
+/**
+ * Mirror a freshly-seen tracker into the vehicle registry so /vehicle-configuration
+ * lists it without anyone typing it in, and link the two via
+ * `tracked_devices.assigned_vehicle_reg`.
+ *
+ * Runs only while a device is still unlinked — once `assignedVehicleReg` is set
+ * this is skipped, so a steady-state poll costs no extra queries.
+ *
+ * Existing rows are only ever *backfilled*: a registration number or vehicle
+ * type an admin has corrected by hand is never overwritten by vendor data.
+ */
+async function linkVehicleRecord(
+  customerId: number,
+  device: typeof trackedDevicesTable.$inferSelect,
+  ping: NormalizedPing,
+): Promise<void> {
+  // The vendor's `name` is the vehicle's CHASSIS number (e.g. R6VA013L0SL186456)
+  // and `deviceImei` is the tracker's unique id — neither is a number plate.
+  // The registry still needs a non-null registrationNumber, so the chassis
+  // stands in as a placeholder until an admin enters the real plate.
+  const chassisNumber = ping.name?.trim() || null;
+  const registration = (chassisNumber ?? ping.imei ?? `${ping.vendorKey}-${ping.vendorDeviceId}`).trim();
+  if (!registration) return;
+
+  // Match on the most durable identifier first so an admin who has already
+  // entered this vehicle by hand gets it enriched rather than duplicated:
+  // tracker IMEI → chassis number → whatever is in registrationNumber.
+  const findBy = async (where: ReturnType<typeof eq>) => {
+    const [row] = await db.select().from(vehiclesTable)
+      .where(and(eq(vehiclesTable.customerId, customerId), where))
+      .limit(1);
+    return row;
+  };
+
+  let vehicle =
+    (ping.imei ? await findBy(eq(vehiclesTable.imei, ping.imei)) : undefined) ??
+    (chassisNumber ? await findBy(eq(vehiclesTable.chassisNumber, chassisNumber)) : undefined) ??
+    await findBy(eq(vehiclesTable.registrationNumber, registration));
+
+  const existing = vehicle;
+
+  if (!vehicle) {
+    vehicle = await insertReturning(vehiclesTable, {
+      customerId,
+      hubId: null,
+      registrationNumber: registration,
+      chassisNumber,
+      vehicleType: toVehicleType(ping.vendorType),
+      imei: ping.imei ?? null,
+      iotVendor: ping.vendorKey,
+      metadata: {
+        source: "GPS_POLL",
+        vendorKey: ping.vendorKey,
+        vendorDeviceId: ping.vendorDeviceId,
+        vendorType: ping.vendorType ?? null,
+        simPhone: ping.simPhone ?? null,
+        trackedDeviceId: device.id,
+        // Flags that registrationNumber is the chassis standing in for a plate
+        // nobody has entered yet, so the UI can prompt for the real one.
+        registrationPending: true,
+      },
+    });
+    logger.info(
+      { vehicle: vehicle.id, chassisNumber, imei: ping.imei, device: device.id },
+      "Auto-registered vehicle from GPS tracker",
+    );
+  } else {
+    // Fill gaps only — never clobber values an admin has set.
+    const backfill: Partial<typeof vehiclesTable.$inferInsert> = {};
+    if (!vehicle.imei && ping.imei) backfill.imei = ping.imei;
+    if (!vehicle.chassisNumber && chassisNumber) backfill.chassisNumber = chassisNumber;
+    if (!vehicle.iotVendor) backfill.iotVendor = ping.vendorKey;
+    if (Object.keys(backfill).length > 0) {
+      await db.update(vehiclesTable).set(backfill).where(eq(vehiclesTable.id, vehicle.id));
+    }
+  }
+
+  await db.update(trackedDevicesTable)
+    .set({ assignedVehicleReg: vehicle.registrationNumber })
+    .where(eq(trackedDevicesTable.id, device.id));
+}
+
 async function processOnePing(
   account: typeof vendorAccountsTable.$inferSelect,
   ping: NormalizedPing,
@@ -241,6 +336,16 @@ async function processOnePing(
 
     device = newDev;
     logger.info({ device: device.id, name: ping.name, vendorKey: ping.vendorKey }, "Auto-registered new tracked device");
+  }
+
+  // ── 1b. Mirror into the vehicle registry, once per device ──────────────────
+  // A failure here must not cost us the position, so it is contained.
+  if (!device.assignedVehicleReg) {
+    try {
+      await linkVehicleRecord(account.customerId, device, ping);
+    } catch (err) {
+      logger.warn({ err, device: device.id }, "Failed to link vehicle record for tracked device");
+    }
   }
 
   // ── 2. Dedup: skip if posId already recorded ───────────────────────────────

@@ -105,13 +105,19 @@ export default function Devices() {
     onError: (e: any) => toast({ title: 'Error', description: e.message, variant: 'destructive' }),
   });
 
-  const filtered = deviceList.filter(d => {
-    const q = search.toLowerCase();
-    const nameMatch = (d.name ?? '').toLowerCase().includes(q) || (d.imei ?? '').toLowerCase().includes(q) || d.vendorDeviceId.toLowerCase().includes(q);
-    const statusMatch = filterStatus === 'all' || d.status === filterStatus;
-    const catMatch = filterCategoryId === 'all' || String(d.category?.id) === filterCategoryId;
-    return nameMatch && statusMatch && catMatch;
-  });
+  const filtered = deviceList
+    .filter(d => {
+      const q = search.toLowerCase();
+      const nameMatch = (d.name ?? '').toLowerCase().includes(q) || (d.imei ?? '').toLowerCase().includes(q) || d.vendorDeviceId.toLowerCase().includes(q);
+      const statusMatch = filterStatus === 'all' || d.status === filterStatus;
+      const catMatch = filterCategoryId === 'all' || String(d.category?.id) === filterCategoryId;
+      return nameMatch && statusMatch && catMatch;
+    })
+    // Keep active alarm records above normal devices. Modern JavaScript's
+    // stable sort preserves the API order within both groups.
+    .sort((a, b) =>
+      Number(Boolean(b.lastAlarm?.trim())) - Number(Boolean(a.lastAlarm?.trim())),
+    );
 
   const onlineCount = deviceList.filter(d => d.status === 'ONLINE').length;
   const alarmCount = deviceList.filter(d => d.lastAlarm).length;

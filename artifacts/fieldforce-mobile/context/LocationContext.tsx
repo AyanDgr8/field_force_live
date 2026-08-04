@@ -15,6 +15,7 @@ import {
   loadQueue,
   subscribe,
 } from '@/lib/offlineQueue';
+import { apiGet } from '@/lib/api';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -36,6 +37,17 @@ interface LocationContextValue {
 // ─── Context ──────────────────────────────────────────────────────────────────
 
 const LocationContext = createContext<LocationContextValue | null>(null);
+
+/**
+ * Ping cadence is set per tenant from the admin panel (Mobile App Config) and
+ * served by GET /config/mobile. These bounds mirror the server's so a bad or
+ * stale value can never leave the app hammering the API or effectively idle.
+ */
+const DEFAULT_PING_INTERVAL_MS = 5_000;
+const MIN_PING_INTERVAL_MS = 5_000;
+const MAX_PING_INTERVAL_MS = 300_000;
+/** How often to re-read the setting, so a change reaches phones already running. */
+const CONFIG_REFRESH_MS = 5 * 60_000;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -68,6 +80,35 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
   const [pendingSync, setPendingSync] = useState(0);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const collectingRef = useRef(false);
+  const [pingIntervalMs, setPingIntervalMs] = useState(DEFAULT_PING_INTERVAL_MS);
+
+  // Pull the tenant's configured cadence, then re-check periodically so a change
+  // made in the admin panel reaches phones that are already signed in.
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+
+    const load = async () => {
+      try {
+        const cfg = await apiGet<{ pingIntervalSeconds: number }>(
+          '/api/config/mobile',
+          { customerId: String(user.customerId) },
+        );
+        const ms = Number(cfg?.pingIntervalSeconds) * 1_000;
+        if (cancelled || !Number.isFinite(ms)) return;
+        setPingIntervalMs(Math.min(Math.max(ms, MIN_PING_INTERVAL_MS), MAX_PING_INTERVAL_MS));
+      } catch {
+        // Offline or the endpoint is unavailable — keep the current cadence.
+      }
+    };
+
+    void load();
+    const timer = setInterval(() => void load(), CONFIG_REFRESH_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [user]);
 
   // Load the durable queue and surface its size immediately. Delivery waits
   // until AuthContext has restored the signed-in user.
@@ -171,9 +212,10 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    // Match the admin map's refresh closely enough for visibly live movement.
+    // Cadence comes from the tenant's Mobile App Config; the default matches
+    // the admin map's refresh closely enough for visibly live movement.
     void collectPing();
-    intervalRef.current = setInterval(() => void collectPing(), 5_000);
+    intervalRef.current = setInterval(() => void collectPing(), pingIntervalMs);
 
     const handleAppState = (nextState: AppStateStatus) => {
       if (nextState === 'background' || nextState === 'inactive') {
@@ -187,7 +229,7 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
         // Coming back to foreground is the cheapest signal that connectivity may
         // have returned, so retry anything stranded while backgrounded.
         void flushQueue();
-        intervalRef.current = setInterval(() => void collectPing(), 5_000);
+        intervalRef.current = setInterval(() => void collectPing(), pingIntervalMs);
       }
     };
 
@@ -200,7 +242,9 @@ export function LocationProvider({ children }: { children: React.ReactNode }) {
       }
       void flushQueue();
     };
-  }, [user, permissionGranted, collectPing]);
+    // pingIntervalMs is a dependency so a cadence change restarts the timer
+    // instead of waiting for the next sign-in.
+  }, [user, permissionGranted, collectPing, pingIntervalMs]);
 
   const value = useMemo(() => ({
     coords,

@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { cn } from '@/lib/utils';
-import { AlertTriangle, CheckCircle2, Clock, Plus, Play, Trash2, Zap, Link2, Shield } from 'lucide-react';
+import { AlertTriangle, CheckCircle2, Clock, Plus, Play, Trash2, Zap, Link2, Shield, Pencil } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { normalizeList } from '@/lib/normalize-list';
 
@@ -36,13 +36,42 @@ function StatusIndicator({ status }: { status: VendorAccount['status'] }) {
   return <span className="flex items-center gap-1 text-gray-400 text-xs"><Clock className="w-3.5 h-3.5" />Disabled</span>;
 }
 
-const EMPTY_FORM = { vendorKey: 'BOLT', displayName: '', username: '', password: '', pollIntervalSeconds: '30', enabled: true };
+const EMPTY_FORM = { vendorKey: 'BOLT', displayName: '', username: '', password: '', baseUrl: '', pollIntervalSeconds: '30', enabled: true };
+
+const MIN_POLL_SECONDS = 3;
+const MAX_POLL_SECONDS = 300;
+
+type DialogState = { mode: 'create' } | { mode: 'edit'; id: number } | null;
 
 export default function VendorAccounts() {
   const qc = useQueryClient();
   const { toast } = useToast();
-  const [dialog, setDialog] = useState<'create' | null>(null);
+  const [dialog, setDialog] = useState<DialogState>(null);
   const [form, setForm] = useState({ ...EMPTY_FORM });
+  const isEdit = dialog?.mode === 'edit';
+
+  function openCreate() {
+    setForm({ ...EMPTY_FORM });
+    setDialog({ mode: 'create' });
+  }
+
+  /** Credentials are write-only, so the fields start blank — blank means "keep". */
+  function openEdit(acc: VendorAccount) {
+    setForm({
+      ...EMPTY_FORM,
+      vendorKey: acc.vendorKey,
+      displayName: acc.displayName,
+      pollIntervalSeconds: String(acc.pollIntervalSeconds),
+      enabled: acc.enabled,
+    });
+    setDialog({ mode: 'edit', id: acc.id });
+  }
+
+  const pollSeconds = parseInt(form.pollIntervalSeconds, 10);
+  const pollValid = Number.isFinite(pollSeconds) && pollSeconds >= MIN_POLL_SECONDS && pollSeconds <= MAX_POLL_SECONDS;
+  const needsCredentials = form.vendorKey !== 'MOCK_BOLT';
+  // On edit, supplying one half of a credential pair is ambiguous — require both or neither.
+  const credentialsPartial = needsCredentials && (!!form.username !== !!form.password);
   const [testResult, setTestResult] = useState<{ accountId: number; ok: boolean; message: string } | null>(null);
 
   const { data: accounts = [], isLoading } = useQuery<VendorAccount[]>({
@@ -58,7 +87,12 @@ export default function VendorAccounts() {
       body: JSON.stringify({
         vendorKey: form.vendorKey,
         displayName: form.displayName,
-        credentials: { username: form.username, password: form.password },
+        credentials: {
+          username: form.username,
+          password: form.password,
+          // Omitted unless set — the connector then uses its own default host.
+          ...(form.baseUrl.trim() ? { baseUrl: form.baseUrl.trim() } : {}),
+        },
         pollIntervalSeconds: parseInt(form.pollIntervalSeconds),
         enabled: form.enabled,
       }),
@@ -68,6 +102,35 @@ export default function VendorAccounts() {
       setDialog(null);
       setForm({ ...EMPTY_FORM });
       toast({ title: 'Vendor account created. Polling started.' });
+    },
+    onError: (e: any) => toast({ title: 'Error', description: e.message, variant: 'destructive' }),
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: (id: number) => apiFetch(`/api/vendor-accounts/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        displayName: form.displayName,
+        pollIntervalSeconds: parseInt(form.pollIntervalSeconds),
+        enabled: form.enabled,
+        // Only sent when both fields were filled in — otherwise the stored
+        // credentials are left untouched.
+        ...(form.username && form.password
+          ? {
+              credentials: {
+                username: form.username,
+                password: form.password,
+                ...(form.baseUrl.trim() ? { baseUrl: form.baseUrl.trim() } : {}),
+              },
+            }
+          : {}),
+      }),
+    }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['vendor-accounts'] });
+      setDialog(null);
+      setForm({ ...EMPTY_FORM });
+      toast({ title: 'Vendor account updated. Polling rescheduled.' });
     },
     onError: (e: any) => toast({ title: 'Error', description: e.message, variant: 'destructive' }),
   });
@@ -119,7 +182,7 @@ export default function VendorAccounts() {
           <h1 className="text-xl font-bold">GPS Vendor Accounts</h1>
           <p className="text-sm text-muted-foreground mt-0.5">Manage hardware GPS tracker integrations — BOLT (track360) and others.</p>
         </div>
-        <Button onClick={() => setDialog('create')} className="gap-2">
+        <Button onClick={openCreate} className="gap-2">
           <Plus className="w-4 h-4" /> Add Vendor Account
         </Button>
       </div>
@@ -190,6 +253,9 @@ export default function VendorAccounts() {
                     />
                   </div>
                   <div className="flex gap-1 flex-wrap justify-end">
+                    <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => openEdit(acc)}>
+                      <Pencil className="w-3 h-3" /> Edit
+                    </Button>
                     <Button size="sm" variant="outline" className="h-7 text-xs gap-1"
                       onClick={() => testMutation.mutate(acc.id)} disabled={testMutation.isPending}>
                       <Zap className="w-3 h-3" /> Test
@@ -210,43 +276,71 @@ export default function VendorAccounts() {
         ))}
       </div>
 
-      {/* Create dialog */}
-      <Dialog open={dialog === 'create'} onOpenChange={open => { if (!open) setDialog(null); }}>
+      {/* Create / edit dialog */}
+      <Dialog open={dialog !== null} onOpenChange={open => { if (!open) setDialog(null); }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Add Vendor Account</DialogTitle>
+            <DialogTitle>{isEdit ? 'Edit Vendor Account' : 'Add Vendor Account'}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div>
               <Label>Vendor</Label>
-              <Select value={form.vendorKey} onValueChange={v => setForm(f => ({ ...f, vendorKey: v }))}>
+              <Select value={form.vendorKey} onValueChange={v => setForm(f => ({ ...f, vendorKey: v }))} disabled={isEdit}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="BOLT">BOLT (track360 pull API)</SelectItem>
                   <SelectItem value="MOCK_BOLT">MOCK_BOLT (demo / no credentials needed)</SelectItem>
                 </SelectContent>
               </Select>
+              {isEdit && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  The vendor cannot be changed after creation — delete the account and add a new one instead.
+                </p>
+              )}
             </div>
             <div>
               <Label>Display Name</Label>
               <Input value={form.displayName} onChange={e => setForm(f => ({ ...f, displayName: e.target.value }))} placeholder="e.g. Delivery Fleet — BOLT" />
             </div>
-            {form.vendorKey !== 'MOCK_BOLT' && (
+            {needsCredentials && (
               <>
+                {isEdit && (
+                  <p className="text-xs text-muted-foreground -mb-1">
+                    Leave username and password blank to keep the stored credentials.
+                  </p>
+                )}
                 <div>
                   <Label>Username</Label>
-                  <Input value={form.username} onChange={e => setForm(f => ({ ...f, username: e.target.value }))} autoComplete="off" />
+                  <Input value={form.username} onChange={e => setForm(f => ({ ...f, username: e.target.value }))}
+                    placeholder={isEdit ? 'Unchanged' : undefined} autoComplete="off" />
                 </div>
                 <div>
                   <Label>Password</Label>
-                  <Input type="password" value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} autoComplete="new-password" />
+                  <Input type="password" value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
+                    placeholder={isEdit ? 'Unchanged' : undefined} autoComplete="new-password" />
+                </div>
+                <div>
+                  <Label>API Base URL <span className="text-muted-foreground font-normal">(optional)</span></Label>
+                  <Input value={form.baseUrl} onChange={e => setForm(f => ({ ...f, baseUrl: e.target.value }))}
+                    placeholder="https://pullapi-s2.track360.co.in/api/v1/auth/pull_api" autoComplete="off" />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Leave blank for the default host. Set this only if your tracking account lives on a different track360 server.
+                    {isEdit && ' It is stored with the credentials, so re-enter the username and password to change it.'}
+                  </p>
                 </div>
               </>
             )}
             <div>
-              <Label>Poll Interval (seconds, 10–300)</Label>
-              <Input type="number" min={10} max={300} value={form.pollIntervalSeconds}
+              <Label>Poll Interval (seconds, {MIN_POLL_SECONDS}–{MAX_POLL_SECONDS})</Label>
+              <Input type="number" min={MIN_POLL_SECONDS} max={MAX_POLL_SECONDS} value={form.pollIntervalSeconds}
                 onChange={e => setForm(f => ({ ...f, pollIntervalSeconds: e.target.value }))} />
+              {form.pollIntervalSeconds !== '' && !pollValid ? (
+                <p className="text-xs text-destructive mt-1">Enter a whole number between {MIN_POLL_SECONDS} and {MAX_POLL_SECONDS}.</p>
+              ) : (
+                <p className="text-xs text-muted-foreground mt-1">
+                  Positions are only as fresh as this interval plus the tracker's own reporting rate.
+                </p>
+              )}
             </div>
             <div className="flex items-center gap-2">
               <Switch checked={form.enabled} onCheckedChange={v => setForm(f => ({ ...f, enabled: v }))} />
@@ -258,10 +352,21 @@ export default function VendorAccounts() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialog(null)}>Cancel</Button>
-            <Button disabled={createMutation.isPending || !form.displayName || (form.vendorKey !== 'MOCK_BOLT' && (!form.username || !form.password))}
-              onClick={() => createMutation.mutate()}>
-              {createMutation.isPending ? 'Creating…' : 'Create & Start Polling'}
-            </Button>
+            {isEdit ? (
+              <Button
+                disabled={updateMutation.isPending || !form.displayName || !pollValid || credentialsPartial}
+                onClick={() => updateMutation.mutate((dialog as { mode: 'edit'; id: number }).id)}
+              >
+                {updateMutation.isPending ? 'Saving…' : 'Save Changes'}
+              </Button>
+            ) : (
+              <Button
+                disabled={createMutation.isPending || !form.displayName || !pollValid || (needsCredentials && (!form.username || !form.password))}
+                onClick={() => createMutation.mutate()}
+              >
+                {createMutation.isPending ? 'Creating…' : 'Create & Start Polling'}
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

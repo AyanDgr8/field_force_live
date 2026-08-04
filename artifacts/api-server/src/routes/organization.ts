@@ -95,7 +95,10 @@ router.get("/organization/bootstrap", requireAuth, async (req, res): Promise<voi
   const states = me.role === "SUPER_ADMIN" ? allStates : allStates.filter(s => me.stateIds.includes(s.id));
   const hubs = me.role === "SUPER_ADMIN" ? allHubs : me.role === "STATE_ADMIN"
     ? allHubs.filter(h => h.stateId != null && me.stateIds.includes(h.stateId)) : allHubs.filter(h => me.hubIds.includes(h.id));
-  const vehicles = me.role === "SUPER_ADMIN" ? allVehicles : allVehicles.filter(v => v.hubId != null && hubs.some(h => h.id === v.hubId));
+  // A vehicle with no hub is unallocated inventory, not another hub's asset —
+  // the GPS poller creates these on first fix and someone has to be able to see
+  // them in order to allocate them. Hub-assigned vehicles stay scoped as before.
+  const vehicles = me.role === "SUPER_ADMIN" ? allVehicles : allVehicles.filter(v => v.hubId == null || hubs.some(h => h.id === v.hubId));
   res.json({ me, states, hubs, vehicles, creatableRoles: (Object.keys(roleRank) as Role[]).filter(r => mayCreate(me.role as Role, r)) });
 });
 

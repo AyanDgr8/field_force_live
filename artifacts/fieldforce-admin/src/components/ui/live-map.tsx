@@ -210,7 +210,7 @@ function MarkerPin({ pos }: { pos: UnifiedPosition }) {
 }
 
 // ─── Tooltip on hover ─────────────────────────────────────────────────────────
-function MarkerWithTooltip({ pos, onClick, selected = false }: { pos: UnifiedPosition; onClick: () => void; selected?: boolean }) {
+function MarkerWithTooltip({ pos, onClick, selected = false }: { pos: UnifiedPosition; onClick: (e: React.MouseEvent) => void; selected?: boolean }) {
   const [hover, setHover] = useState(false);
   const ageMs = Date.now() - new Date(pos.recordedAt).getTime();
   const fixAgo = ageMs < 60_000 ? `${Math.round(ageMs / 1000)}s ago`
@@ -343,12 +343,14 @@ export function CategoryTabs({
 interface LiveMapProps {
   positions: UnifiedPosition[];
   onPositionClick?: (pos: UnifiedPosition) => void;
+  /** Fired when the map itself is clicked — used to clear the selection. */
+  onMapClick?: () => void;
   selectedPositionId?: string | null;
   activeCategory?: CategoryFilter;
   categories?: { key: string; label: string; colorHex: string }[];
 }
 
-export function LiveMap({ positions, onPositionClick, selectedPositionId = null, activeCategory = 'ALL', categories = [] }: LiveMapProps) {
+export function LiveMap({ positions, onPositionClick, onMapClick, selectedPositionId = null, activeCategory = 'ALL', categories = [] }: LiveMapProps) {
   const apiKey = GOOGLE_MAPS_API_KEY;
   const { isLoaded, loadError } = useGoogleMaps();
   const mapRef = useRef<google.maps.Map | null>(null);
@@ -426,6 +428,7 @@ export function LiveMap({ positions, onPositionClick, selectedPositionId = null,
         center={DEFAULT_CENTER}
         zoom={11}
         onLoad={onMapLoad}
+        onClick={() => onMapClick?.()}
         options={mapOptions}
       >
         {filtered
@@ -438,7 +441,13 @@ export function LiveMap({ positions, onPositionClick, selectedPositionId = null,
               position={{ lat: pos.latitude, lng: pos.longitude }}
               mapPaneName={OverlayView.OVERLAY_MOUSE_TARGET}
             >
-              <MarkerWithTooltip pos={pos} selected={selectedPositionId === markerId} onClick={() => onPositionClick?.(pos)} />
+              <MarkerWithTooltip
+                pos={pos}
+                selected={selectedPositionId === markerId}
+                // Keep the click on the marker — otherwise it also reaches the
+                // map and immediately clears the selection it just made.
+                onClick={e => { e.stopPropagation(); onPositionClick?.(pos); }}
+              />
             </OverlayView>
             );
           })}

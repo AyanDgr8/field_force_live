@@ -1,8 +1,8 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useLocation, Link } from 'wouter';
 import { useQuery } from '@tanstack/react-query';
 import { useGetMe, useLogout } from '@workspace/api-client-react';
-import { Loader2, Map, Users, AlertTriangle, Settings, LogOut, Activity, CalendarDays, Cpu, Link2, QrCode, RadioTower, Warehouse, Crown, MapPinned, UserCog, Bike, FileCheck2, PackageCheck, ChevronDown, MessageCircle } from 'lucide-react';
+import { Loader2, Map, Users, AlertTriangle, Settings, LogOut, Activity, CalendarDays, Cpu, Link2, QrCode, RadioTower, Warehouse, Crown, MapPinned, UserCog, Bike, FileCheck2, PackageCheck, ChevronDown, MessageCircle, Smartphone, ArrowLeft, PanelLeftOpen, Car } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ToastAction } from '@/components/ui/toast';
 import { useToast } from '@/hooks/use-toast';
@@ -35,15 +35,37 @@ async function fetchActiveAlerts(): Promise<ActiveEmergencyAlert[]> {
 }
 
 export default function Layout({ children }: { children: React.ReactNode }) {
-  const [, setLocation] = useLocation();
+  const [location, setLocation] = useLocation();
   const { data: user, isLoading, isError } = useGetMe();
   const logoutMutation = useLogout();
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const configurationRoutes = ['/hub-configuration', '/vehicle-configuration', '/background-verification', '/iot-operations'];
+  const configurationActive = configurationRoutes.some(route => location.startsWith(route));
+  const [configurationOpen, setConfigurationOpen] = useState(configurationActive);
+  const mobileAppRoutes = ['/qrcode', '/mobile-configuration'];
+  const mobileAppActive = mobileAppRoutes.some(route => location.startsWith(route));
+  const [mobileAppOpen, setMobileAppOpen] = useState(mobileAppActive);
+  const fleetRoutes = ['/bikers', '/vehicles', '/users'];
+  const fleetActive = fleetRoutes.some(route => location.startsWith(route));
+  const [fleetOpen, setFleetOpen] = useState(fleetActive);
 
   useEffect(() => {
     if (isError) {
       setLocation('/login');
     }
   }, [isError, setLocation]);
+
+  useEffect(() => {
+    if (configurationActive) setConfigurationOpen(true);
+  }, [configurationActive]);
+
+  useEffect(() => {
+    if (mobileAppActive) setMobileAppOpen(true);
+  }, [mobileAppActive]);
+
+  useEffect(() => {
+    if (fleetActive) setFleetOpen(true);
+  }, [fleetActive]);
 
   if (isLoading) {
     return (
@@ -58,9 +80,20 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex h-screen overflow-hidden bg-background">
       <EmergencyAlertNotifier adminId={user.id} />
+      {sidebarOpen && (
+        <button
+          type="button"
+          aria-label="Close sidebar"
+          className="fixed inset-0 z-10 bg-slate-950/45 md:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
       {/* Sidebar */}
-      <aside className="w-64 bg-sidebar border-r border-sidebar-border flex flex-col shadow-2xl shadow-slate-950/15 z-20">
-        <div className="h-[72px] flex items-center px-5 border-b border-sidebar-border">
+      <aside className={cn(
+        "absolute inset-y-0 left-0 w-64 shrink-0 bg-sidebar border-r border-sidebar-border flex flex-col shadow-2xl shadow-slate-950/15 z-20 transition-transform duration-200 md:relative",
+        sidebarOpen ? "translate-x-0" : "-translate-x-full md:hidden",
+      )}>
+        <div className="h-[72px] flex items-center justify-between gap-2 px-4 border-b border-sidebar-border">
           <div className="flex items-center gap-2">
             <div className="w-9 h-9 bg-accent rounded-xl flex items-center justify-center shadow-lg shadow-amber-500/20 ring-1 ring-white/15">
               <Activity className="w-5 h-5 text-accent-foreground" />
@@ -70,24 +103,95 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               <span className="block text-[9px] font-semibold uppercase tracking-[0.18em] text-sidebar-foreground/40">Command center</span>
             </div>
           </div>
+          <button
+            type="button"
+            onClick={() => setSidebarOpen(false)}
+            aria-label="Close sidebar"
+            title="Close sidebar"
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-sidebar-border text-sidebar-foreground/70 transition hover:bg-sidebar-accent hover:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sidebar-ring"
+          >
+            <ArrowLeft className="h-5 w-5" />
+          </button>
         </div>
 
         <div className="flex-1 overflow-y-auto py-4 flex flex-col gap-1 px-3">
           <p className="px-3 text-[10px] font-semibold uppercase tracking-widest text-sidebar-foreground/40 mb-1 mt-1">Operations</p>
           <NavItem href="/" icon={<Map className="w-5 h-5" />} label="Live Map" />
-          <NavItem href="/users" icon={<Users className="w-5 h-5" />} label="Fleet & Users" />
+          <button
+            type="button"
+            onClick={() => setFleetOpen(open => !open)}
+            aria-expanded={fleetOpen}
+            aria-controls="fleet-navigation"
+            className={cn(
+              "group flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left text-sm font-medium transition-all duration-150",
+              fleetActive
+                ? "border-amber-300/50 bg-sidebar-primary text-sidebar-primary-foreground shadow-lg shadow-black/15"
+                : "border-transparent text-sidebar-foreground/70 hover:border-sidebar-border hover:bg-sidebar-accent hover:text-sidebar-foreground",
+            )}
+          >
+            <Users className="h-5 w-5 shrink-0" />
+            <span className="flex-1">Fleet</span>
+            <ChevronDown className={cn("h-4 w-4 transition-transform", fleetOpen && "rotate-180")} />
+          </button>
+          {fleetOpen && (
+            <div id="fleet-navigation" className="ml-4 flex flex-col gap-1 border-l border-sidebar-border pl-2">
+              <NavItem href="/bikers" icon={<Bike className="w-4 h-4" />} label="Bikers" />
+              <NavItem href="/vehicles" icon={<Car className="w-4 h-4" />} label="Vehicles" />
+              <NavItem href="/users" icon={<Users className="w-4 h-4" />} label="Users" />
+            </div>
+          )}
           {user.role === 'SUPER_ADMIN' && <NavItem href="/super-admins" icon={<Crown className="w-5 h-5" />} label="Super Admins" />}
           {['SUPER_ADMIN'].includes(user.role) && <NavItem href="/state-admins" icon={<MapPinned className="w-5 h-5" />} label="State Admins" />}
           {['SUPER_ADMIN', 'STATE_ADMIN'].includes(user.role) && <NavItem href="/hub-admins" icon={<UserCog className="w-5 h-5" />} label="Hub Admins" />}
-          <NavItem href="/bikers" icon={<Bike className="w-5 h-5" />} label="Bikers" />
           <NavItem href="/attendance" icon={<CalendarDays className="w-5 h-5" />} label="Attendance" />
-          <NavItem href="/alerts" icon={<AlertTriangle className="w-5 h-5" />} label="Alerts" />
-          <NavItem href="/qrcode" icon={<QrCode className="w-5 h-5" />} label="Mobile App QR" />
-          <NavItem href="/iot-operations" icon={<RadioTower className="w-5 h-5" />} label="IoT Operations" />
-          <NavItem href="/hub-configuration" icon={<Warehouse className="w-5 h-5" />} label="Hub Configuration" />
+          <NavItem href="/alerts" icon={<AlertTriangle className="w-5 h-5" />} label="Mobile Alerts" />
+          <button
+            type="button"
+            onClick={() => setMobileAppOpen(open => !open)}
+            aria-expanded={mobileAppOpen}
+            aria-controls="mobile-app-navigation"
+            className={cn(
+              "group flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left text-sm font-medium transition-all duration-150",
+              mobileAppActive
+                ? "border-amber-300/50 bg-sidebar-primary text-sidebar-primary-foreground shadow-lg shadow-black/15"
+                : "border-transparent text-sidebar-foreground/70 hover:border-sidebar-border hover:bg-sidebar-accent hover:text-sidebar-foreground",
+            )}
+          >
+            <Smartphone className="h-5 w-5 shrink-0" />
+            <span className="flex-1">Mobile App</span>
+            <ChevronDown className={cn("h-4 w-4 transition-transform", mobileAppOpen && "rotate-180")} />
+          </button>
+          {mobileAppOpen && (
+            <div id="mobile-app-navigation" className="ml-4 flex flex-col gap-1 border-l border-sidebar-border pl-2">
+              <NavItem href="/qrcode" icon={<QrCode className="w-4 h-4" />} label="Mobile App QR" />
+              <NavItem href="/mobile-configuration" icon={<Smartphone className="w-4 h-4" />} label="Mobile App Config" />
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={() => setConfigurationOpen(open => !open)}
+            aria-expanded={configurationOpen}
+            aria-controls="configuration-navigation"
+            className={cn(
+              "group flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left text-sm font-medium transition-all duration-150",
+              configurationActive
+                ? "border-amber-300/50 bg-sidebar-primary text-sidebar-primary-foreground shadow-lg shadow-black/15"
+                : "border-transparent text-sidebar-foreground/70 hover:border-sidebar-border hover:bg-sidebar-accent hover:text-sidebar-foreground",
+            )}
+          >
+            <Settings className="h-5 w-5 shrink-0" />
+            <span className="flex-1">Configuration</span>
+            <ChevronDown className={cn("h-4 w-4 transition-transform", configurationOpen && "rotate-180")} />
+          </button>
+          {configurationOpen && (
+            <div id="configuration-navigation" className="ml-4 flex flex-col gap-1 border-l border-sidebar-border pl-2">
+              <NavItem href="/hub-configuration" icon={<Warehouse className="w-4 h-4" />} label="Hub Configuration" />
+              <NavItem href="/vehicle-configuration" icon={<Bike className="w-4 h-4" />} label="Vehicle Configuration" />
+              <NavItem href="/background-verification" icon={<FileCheck2 className="w-4 h-4" />} label="Background Verification" />
+              <NavItem href="/iot-operations" icon={<RadioTower className="w-4 h-4" />} label="IoT Operations" />
+            </div>
+          )}
           {user.role === 'SUPER_ADMIN' && <NavItem href="/state-configuration" icon={<MapPinned className="w-5 h-5" />} label="State Configuration" />}
-          <NavItem href="/vehicle-configuration" icon={<Bike className="w-5 h-5" />} label="Vehicle Configuration" />
-          <NavItem href="/background-verification" icon={<FileCheck2 className="w-5 h-5" />} label="Background Verification" />
           <NavItem href="/delivery-imports" icon={<PackageCheck className="w-5 h-5" />} label="Delivery Imports" />
 
           <p className="px-3 text-[10px] font-semibold uppercase tracking-widest text-sidebar-foreground/40 mb-1 mt-3">GPS Devices</p>
@@ -107,9 +211,22 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       {/* Main Content */}
       <main className="flex-1 flex flex-col overflow-hidden relative">
         <header className="h-[72px] shrink-0 border-b border-border bg-card/85 backdrop-blur-xl flex items-center justify-between px-6 z-10">
-          <div>
+          <div className="flex items-center gap-3">
+            {!sidebarOpen && (
+              <button
+                type="button"
+                onClick={() => setSidebarOpen(true)}
+                aria-label="Open sidebar"
+                title="Open sidebar"
+                className="grid h-10 w-10 shrink-0 place-items-center rounded-xl border border-border bg-background/70 text-foreground shadow-sm transition hover:bg-card focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-ring/15"
+              >
+                <PanelLeftOpen className="h-5 w-5" />
+              </button>
+            )}
+            <div>
             <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground">Operations workspace</p>
             <p className="text-sm font-semibold text-foreground mt-0.5">Live field intelligence</p>
+            </div>
           </div>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>

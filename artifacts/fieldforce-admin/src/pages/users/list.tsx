@@ -4,7 +4,7 @@ import { useListUsers } from '@workspace/api-client-react';
 import { format } from 'date-fns';
 import { Search, UserCircle, Shield } from 'lucide-react';
 import { Input } from '@/components/ui/input';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { normalizeList } from '@/lib/normalize-list';
@@ -22,7 +22,7 @@ export default function UsersList() {
 
   const userList = normalizeList<NonNullable<typeof users>[number]>(users, ['users']);
   const filteredUsers = userList.filter(u =>
-    u.firstName.toLowerCase().includes(search.toLowerCase()) || 
+    u.firstName.toLowerCase().includes(search.toLowerCase()) ||
     u.lastName.toLowerCase().includes(search.toLowerCase()) ||
     u.employeeCode.toLowerCase().includes(search.toLowerCase()) ||
     u.email.toLowerCase().includes(search.toLowerCase())
@@ -32,7 +32,7 @@ export default function UsersList() {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Fleet & Users</h1>
+          <h1 className="text-2xl font-bold tracking-tight">Users</h1>
           <p className="text-sm text-muted-foreground mt-1">Manage field workforce and administrative access.</p>
         </div>
       </div>
@@ -41,8 +41,8 @@ export default function UsersList() {
         <div className="p-4 border-b flex flex-col sm:flex-row gap-4">
           <div className="relative flex-1">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input 
-              placeholder="Search by name, code, or email..." 
+            <Input
+              placeholder="Search by name, code, or email..."
               className="pl-9 w-full"
               value={search}
               onChange={(e) => setSearch(e.target.value)}

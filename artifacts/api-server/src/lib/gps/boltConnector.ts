@@ -15,34 +15,77 @@ import { logger } from "../logger.js";
 const DEFAULT_BASE_URL = "https://pullapi-s2.track360.co.in/api/v1/auth/pull_api";
 const TIMEOUT_MS = 10_000;
 
-// ─── Timestamp parsers ────────────────────────────────────────────────────────
+// ─── Field parsers ────────────────────────────────────────────────────────────
 
-/** Parse "2020-02-20 08:02:06" as UTC (no offset in string — explicit Z). */
-function parseFixTime(s: string): Date {
-  return new Date(s.replace(" ", "T") + "Z");
+/**
+ * Timestamps arrive in more than one shape depending on the BOLT deployment:
+ *   "2020-02-20 08:02:06"             — documented format, no zone, is UTC
+ *   "2026-08-04T05:52:54.000+0000"    — ISO-8601 with an explicit offset
+ *   "2026-08-04T07:10:59.000000+0000" — same, with microsecond precision
+ *
+ * Only the zone-less form may have `Z` appended; doing that to the others
+ * yields an Invalid Date. Microseconds are trimmed to milliseconds because
+ * the ECMAScript date format specifies exactly three fractional digits.
+ */
+function parseVendorTime(value: unknown): Date | null {
+  if (typeof value !== "string") return null;
+  const raw = value.trim();
+  if (!raw || raw.toLowerCase() === "null") return null;
+
+  const trimmedFraction = raw.replace(/(\.\d{3})\d+/, "$1");
+  const hasZone = /(?:Z|[+-]\d{2}:?\d{2})$/.test(trimmedFraction);
+  const normalized = hasZone ? trimmedFraction : trimmedFraction.replace(" ", "T") + "Z";
+
+  const parsed = new Date(normalized);
+  return isNaN(parsed.getTime()) ? null : parsed;
 }
 
-/** Parse "2020-02-20T08:02:07.470+0000" — standard ISO-8601, already UTC. */
-function parseUpdateTime(s: string): Date {
-  return new Date(s);
+/**
+ * `ignition` and friends are documented as booleans but ship as the strings
+ * `"true"` / `"false"`, so a bare `Boolean()` reads every "false" as ON.
+ */
+function parseTriState(value: unknown): boolean | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") return value !== 0;
+  if (typeof value !== "string") return null;
+
+  const s = value.trim().toLowerCase();
+  if (["true", "1", "on", "yes"].includes(s)) return true;
+  if (["false", "0", "off", "no"].includes(s)) return false;
+  return null;
+}
+
+/** `alarm` is sent as the *string* "null" when there is no alarm. */
+function parseAlarm(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const s = value.trim();
+  if (!s || ["null", "none", "undefined"].includes(s.toLowerCase())) return null;
+  return s;
 }
 
 // ─── Single device normalizer ─────────────────────────────────────────────────
 
 function normalize(raw: Record<string, unknown>): NormalizedPing | null {
+  // `valid: 0` marks a unit that has never produced a usable fix — its
+  // coordinates and timestamps come back null.
+  if (raw.valid === 0 || raw.valid === "0") return null;
+
   const lat = parseFloat(raw.latitude as string);
   const lng = parseFloat(raw.longitude as string);
 
   // Reject invalid / no-fix positions
   if (!isFinite(lat) || !isFinite(lng) || (lat === 0 && lng === 0)) return null;
 
-  const ignitionRaw = raw.ignition;
-  const ignition =
-    ignitionRaw === null || ignitionRaw === undefined
-      ? null
-      : Boolean(ignitionRaw);
+  // deviceFixTime is the authoritative position time — a ping without one
+  // cannot be placed on a timeline, so drop it rather than store an epoch.
+  const recordedAt = parseVendorTime(raw.deviceFixTime);
+  if (!recordedAt) return null;
 
-  const alarm = typeof raw.alarm === "string" && raw.alarm.length > 0 ? raw.alarm : null;
+  if (raw.posId === null || raw.posId === undefined) return null;
+
+  const ignition = parseTriState(raw.ignition);
+  const alarm = parseAlarm(raw.alarm);
 
   const speed = parseFloat(raw.speed as string);
   const course = parseFloat(raw.course as string);
@@ -63,10 +106,44 @@ function normalize(raw: Record<string, unknown>): NormalizedPing | null {
     ignition,
     alarm,
     totalDistanceRaw: isFinite(totalDistance) ? totalDistance : undefined,
-    recordedAt: parseFixTime(raw.deviceFixTime as string),
-    vendorReportedAt: parseUpdateTime(raw.lastUpdate as string),
+    recordedAt,
+    vendorReportedAt: parseVendorTime(raw.lastUpdate) ?? recordedAt,
     rawPayload: raw,
   };
+}
+
+// ─── Error-body reader ────────────────────────────────────────────────────────
+
+/**
+ * BOLT answers auth failures with a 4xx *and* a JSON body carrying the real
+ * reason (`{"status":"failed","message":"User not found"}`). The status code
+ * alone is not actionable, so pull the message out.
+ *
+ * The result lands in `vendor_accounts.last_error` and is shown in the admin
+ * health panel, so redact the credentials before returning it.
+ */
+async function readFailureReason(res: Response, config: ConnectorConfig): Promise<string | null> {
+  let text: string;
+  try {
+    text = await res.text();
+  } catch {
+    return null;
+  }
+
+  let message = text.trim();
+  try {
+    const body = JSON.parse(text) as { message?: unknown };
+    if (typeof body.message === "string" && body.message.trim()) message = body.message.trim();
+  } catch {
+    // Not JSON (e.g. an HTML error page) — fall through to the raw text.
+  }
+
+  if (!message) return null;
+
+  for (const secret of [config.username, config.password, config.apiKey]) {
+    if (secret) message = message.split(secret).join("***");
+  }
+  return message.slice(0, 200);
 }
 
 // ─── HTTP helper (credentials stay in this function, never logged) ────────────
@@ -92,7 +169,8 @@ async function callBolt(
     });
 
     if (!res.ok) {
-      throw new Error(`BOLT HTTP ${res.status}`);
+      const reason = await readFailureReason(res, config);
+      throw new Error(reason ? `BOLT HTTP ${res.status}: ${reason}` : `BOLT HTTP ${res.status}`);
     }
 
     const body = (await res.json()) as { status: string; data: unknown; message: string };

@@ -23,6 +23,8 @@ import PublicOnboarding from '@/pages/public/onboarding';
 import Devices from '@/pages/devices';
 import VendorAccounts from '@/pages/vendor-accounts';
 import MobileAppQrCode from '@/pages/qrcode';
+import MobileConfiguration from '@/pages/mobile-configuration';
+import Vehicles from '@/pages/vehicles';
 import IotOperations from '@/pages/iot-operations';
 import HubConfiguration from '@/pages/hub-configuration';
 import SuperAdmins from '@/pages/super-admins';
@@ -68,6 +70,8 @@ function AppRoutes() {
             <Route path="/devices" component={Devices} />
             <Route path="/vendor-accounts" component={VendorAccounts} />
             <Route path="/qrcode" component={MobileAppQrCode} />
+            <Route path="/mobile-configuration" component={MobileConfiguration} />
+            <Route path="/vehicles" component={Vehicles} />
             <Route path="/iot-operations" component={IotOperations} />
             <Route path="/hub-configuration" component={HubConfiguration} />
             <Route path="/super-admins" component={SuperAdmins} />

@@ -69,7 +69,7 @@ const CreateBody = z.object({
   vendorKey: z.enum(["BOLT", "MOCK_BOLT"]),
   displayName: z.string().min(1),
   credentials: z.object({ username: z.string(), password: z.string(), apiKey: z.string().optional(), baseUrl: z.string().optional() }),
-  pollIntervalSeconds: z.number().int().min(10).max(300).default(30),
+  pollIntervalSeconds: z.number().int().min(3).max(300).default(30),
   enabled: z.boolean().default(true),
 });
 
@@ -100,7 +100,7 @@ router.post("/vendor-accounts", requireAuth, async (req, res): Promise<void> => 
 const UpdateBody = z.object({
   displayName: z.string().min(1).optional(),
   credentials: z.object({ username: z.string(), password: z.string(), apiKey: z.string().optional(), baseUrl: z.string().optional() }).optional(),
-  pollIntervalSeconds: z.number().int().min(10).max(300).optional(),
+  pollIntervalSeconds: z.number().int().min(3).max(300).optional(),
   enabled: z.boolean().optional(),
 });
 
