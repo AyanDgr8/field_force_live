@@ -38,7 +38,7 @@ import {
 } from "@workspace/api-zod";
 import { requireAuth } from "../../middlewares/auth.js";
 import { randomDelhiNcrCoord } from "../../lib/geo.js";
-import { sendPasswordChangedEmail, sendWelcomeEmail } from "../../lib/mailer.js";
+import { notifyPasswordChanged, notifyWelcome } from "../../lib/notify.js";
 import { DEFAULT_USER_PASSWORD, loginUrl, mobileAppUrl, passwordResetRequestUrl } from "../../lib/accounts.js";
 
 const router: IRouter = Router();
@@ -145,22 +145,31 @@ router.post("/users", requireAuth, async (req, res): Promise<void> => {
   }
 
   // Only accounts that actually got credentials above can sign in, so only
-  // those are worth welcoming. The user row is already committed, so a mail
+  // those are worth welcoming. The user row is already committed, so a delivery
   // failure is logged rather than surfaced as a failed creation.
   if (user.role === "USER") {
-    try {
-      await sendWelcomeEmail({
-        to: user.email,
+    const welcomed = await notifyWelcome(
+      {
+        customerId: user.customerId,
+        userId: user.id,
+        email: user.email,
+        phoneNumber: user.phoneNumber,
         recipientName: user.firstName,
+      },
+      {
         loginEmail: user.email,
         password: DEFAULT_USER_PASSWORD,
         loginUrl: loginUrl(),
         resetUrl: passwordResetRequestUrl(),
         role: "Field Agent",
         mobileAppUrl: mobileAppUrl(),
-      });
-    } catch (error) {
-      req.log.error({ err: error, userId: user.id }, "Failed to send welcome email");
+      },
+    );
+    if (!welcomed.ok) {
+      req.log.error(
+        { userId: user.id, whatsapp: welcomed.whatsapp, email: welcomed.email },
+        "Failed to send welcome notification",
+      );
     }
   }
 
@@ -267,14 +276,21 @@ router.post("/users/:id/password", requireAuth, async (req, res): Promise<void> 
     });
   }
 
-  try {
-    await sendPasswordChangedEmail({
-      to: user.email,
+  const notified = await notifyPasswordChanged(
+    {
+      customerId: user.customerId,
+      userId: user.id,
+      email: user.email,
+      phoneNumber: user.phoneNumber,
       recipientName: user.firstName,
-      changedByAdmin: true,
-    });
-  } catch (error) {
-    req.log.error({ err: error, userId: user.id }, "Failed to send admin password reset notification");
+    },
+    { changedByAdmin: true },
+  );
+  if (!notified.ok) {
+    req.log.error(
+      { userId: user.id, whatsapp: notified.whatsapp, email: notified.email },
+      "Failed to send admin password reset notification",
+    );
   }
 
   res.json({ message: "Password updated successfully" });

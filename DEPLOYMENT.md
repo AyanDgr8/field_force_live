@@ -42,6 +42,60 @@ Set `USE_HTTPS=true` only when Node itself owns the TLS certificate.
 The value of `EXPO_PUBLIC_API_URL` is embedded when the mobile app is built.
 It must be the public HTTPS origin, never `localhost` or a private/LAN IP.
 
+## 1a. WhatsApp notifications
+
+Login codes, password resets, and welcome messages go out over WhatsApp as well
+as email. The channel is configured from the dashboard, not from `.env`:
+
+**Notifications → WhatsApp Setup** (super admins only). The page has four tabs:
+
+- **Connection** — pick the provider, paste the credentials, choose which
+  channels are used, and send a test message.
+- **Credentials needed** — every value each provider requires and where to get
+  it. Read this first.
+- **Templates** — the template names and the exact body text to submit to Meta
+  for approval, plus live approval status.
+- **Delivery log** — the last attempts on both channels, with provider errors.
+
+Three providers are supported: the Meta WhatsApp Cloud API (default), Twilio,
+and a generic Custom/BSP option that posts to any HTTP gateway (Gupshup, WATI,
+AiSensy, 360dialog, in-house). Switching between them is a settings change.
+
+Two things to set on the server before using the page:
+
+```dotenv
+# Encrypts the saved credentials at rest. 64 hex characters. Shared with the
+# GPS vendor credentials, so reuse the existing value if one is already set.
+# Generate with:
+#   node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+CREDENTIALS_ENCRYPTION_KEY=
+```
+
+Without it, a development fallback key is used and a warning is logged — fine
+locally, not acceptable in production.
+
+The schema push creates the two tables this needs:
+
+```sh
+pnpm --filter @workspace/db push
+```
+
+Notes:
+
+- **Channel mode** defaults to *WhatsApp and email*. Move to *WhatsApp only*
+  after test messages arrive reliably — a misconfigured WhatsApp account with
+  email switched off means nobody can receive a login code.
+- On the Meta Cloud API, **message mode must be Templates** for anything the
+  business sends first. Plain text only reaches people who messaged your number
+  in the last 24 hours.
+- Use a **permanent System User token**, not the 24-hour test token from the
+  Meta dashboard: the test token stops working the next day.
+- Field agents are messaged on the phone number in their profile. Numbers with
+  no country code get the configured default (91 for India) prefixed.
+- `.env.example` documents an optional `WHATSAPP_*` fallback for configuring the
+  channel before anyone signs in. A configuration saved from the dashboard
+  always wins.
+
 ## 2. Build and run the server
 
 On the server:

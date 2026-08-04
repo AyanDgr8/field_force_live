@@ -33,6 +33,7 @@ import StateConfiguration from '@/pages/state-configuration';
 import VehicleConfiguration from '@/pages/vehicle-configuration';
 import BackgroundVerification from '@/pages/background-verification';
 import DeliveryImports from '@/pages/delivery-imports';
+import WhatsAppNotifications from '@/pages/whatsapp-notifications';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -77,6 +78,7 @@ function AppRoutes() {
             <Route path="/vehicle-configuration" component={VehicleConfiguration} />
             <Route path="/background-verification" component={BackgroundVerification} />
             <Route path="/delivery-imports" component={DeliveryImports} />
+            <Route path="/whatsapp-notifications" component={WhatsAppNotifications} />
             <Route component={NotFound} />
           </Switch>
         </Layout>

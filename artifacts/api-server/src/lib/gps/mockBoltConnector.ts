@@ -55,6 +55,9 @@ export const mockBoltConnector: GpsConnector = {
 
     for (let i = 0; i < NUM_DEVICES; i++) {
       const s = getState(i);
+      // Rider fleet: mostly two-wheelers, a couple of cars so both marker
+      // shapes are visible on the live map.
+      const vehicleType = i < 8 ? "bike" : "car";
       const speed = s.ignition ? 5 + Math.random() * 55 : 0;
       const angleDelta = ((Math.random() - 0.5) * 30 * Math.PI) / 180;
       s.courseDeg = (s.courseDeg + (angleDelta * 180) / Math.PI + 360) % 360;
@@ -78,7 +81,7 @@ export const mockBoltConnector: GpsConnector = {
         lastUpdate: now.toISOString().replace("T", " ").slice(0, 19) + "+0000",
         posId: s.posId,
         phone: `9${String(i + 1).padStart(9, "0")}`,
-        type: "car",
+        type: vehicleType,
         deviceFixTime: now.toISOString().replace("T", " ").slice(0, 19),
         ignition: Math.random() < 0.05 ? null : s.ignition,
         speed: String(speed.toFixed(1)),
@@ -94,7 +97,7 @@ export const mockBoltConnector: GpsConnector = {
         imei: `MOCK${18_000 + i}IMEI000`,
         name: VEHICLE_NAMES[i],
         simPhone: `9${String(i + 1).padStart(9, "0")}`,
-        vendorType: "car",
+        vendorType: vehicleType,
         latitude: s.lat,
         longitude: s.lng,
         speedKph: speed,

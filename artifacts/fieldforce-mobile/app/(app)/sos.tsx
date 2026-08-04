@@ -4,8 +4,10 @@ import {
   Animated,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
@@ -21,6 +23,7 @@ export default function SosScreen() {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const { getCoords } = useLocation();
+  const { height, width } = useWindowDimensions();
 
   const [active, setActive] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -131,21 +134,24 @@ export default function SosScreen() {
   }, [user, active, getCoords]);
 
   const topPad = Platform.OS === 'web' ? 67 : insets.top;
-  const btnSize = 160;
+  const isCompact = height < 700 || width < 360;
+  const btnSize = isCompact ? 132 : 160;
 
   return (
-    <View
-      style={[
+    <ScrollView
+      style={{ backgroundColor: active ? '#1a0a0a' : colors.navy }}
+      contentContainerStyle={[
         s.root,
         {
-          backgroundColor: active ? '#1a0a0a' : colors.navy,
           paddingTop: topPad,
-          paddingBottom: insets.bottom + (Platform.OS === 'web' ? 34 : 0),
+          paddingBottom: insets.bottom + (Platform.OS === 'web' ? 34 : 16),
         },
       ]}
+      showsVerticalScrollIndicator={false}
+      bounces={false}
     >
       {/* Header */}
-      <View style={s.header}>
+      <View style={[s.header, isCompact && s.headerCompact]}>
         <Text style={s.headerTitle}>Emergency SOS</Text>
         <Text style={s.headerSub}>
           {active
@@ -155,7 +161,7 @@ export default function SosScreen() {
       </View>
 
       {/* Status */}
-      <View style={[s.statusChip, { backgroundColor: active ? '#ef444430' : '#ffffff15' }]}>
+      <View style={[s.statusChip, isCompact && s.statusChipCompact, { backgroundColor: active ? '#ef444430' : '#ffffff15' }]}>
         <View style={[s.dot, { backgroundColor: active ? '#ef4444' : '#94a3b8' }]} />
         <Text style={[s.statusText, { color: active ? '#ef4444' : '#94a3b8' }]}>
           {active ? 'SOS ACTIVE' : 'STANDBY'}
@@ -163,7 +169,7 @@ export default function SosScreen() {
       </View>
 
       {/* Button area */}
-      <View style={s.btnWrap}>
+      <View style={[s.btnWrap, isCompact && s.btnWrapCompact]}>
         {/* Pulse rings */}
         {active && (
           <>
@@ -242,13 +248,14 @@ export default function SosScreen() {
           Your GPS location is sent immediately to your manager. Use only in genuine emergencies.
         </Text>
       </View>
-    </View>
+    </ScrollView>
   );
 }
 
 const s = StyleSheet.create({
-  root: { flex: 1, alignItems: 'center' },
+  root: { flexGrow: 1, alignItems: 'center' },
   header: { paddingHorizontal: 32, paddingTop: 40, paddingBottom: 20, alignItems: 'center' },
+  headerCompact: { paddingTop: 20, paddingBottom: 12 },
   headerTitle: {
     color: '#ffffff',
     fontSize: 24,
@@ -270,6 +277,7 @@ const s = StyleSheet.create({
     borderRadius: 20,
     marginBottom: 40,
   },
+  statusChipCompact: { marginBottom: 24 },
   dot: { width: 8, height: 8, borderRadius: 4 },
   statusText: { fontSize: 12, fontWeight: '700' as const, letterSpacing: 1 },
   btnWrap: {
@@ -277,6 +285,7 @@ const s = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: 32,
   },
+  btnWrapCompact: { marginBottom: 20 },
   pulse: {
     position: 'absolute',
   },

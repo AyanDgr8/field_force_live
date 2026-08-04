@@ -1,11 +1,11 @@
 import { Router, type IRouter } from "express";
-import { and, eq, isNull, or } from "drizzle-orm";
+import { eq, or } from "drizzle-orm";
 import bcrypt from "bcryptjs";
 import { v4 as uuidv4 } from "uuid";
 import jwt from "jsonwebtoken";
 import { z } from "zod";
 import { db } from "@workspace/db";
-import { credentialsTable, otpTokensTable, sessionsTable, usersTable } from "@workspace/db";
+import { credentialsTable, otpTokensTable, usersTable } from "@workspace/db";
 import {
   MobileLoginBody,
   MobileLoginResponse,
@@ -14,10 +14,7 @@ import {
   VerifyMobileOtpBody,
   VerifyMobileOtpResponse,
 } from "@workspace/api-zod";
-import {
-  sendPasswordChangedEmail,
-  sendPasswordResetCodeEmail,
-} from "../lib/mailer.js";
+import { notifyPasswordChanged, notifyPasswordResetCode } from "../lib/notify.js";
 
 const router: IRouter = Router();
 
@@ -74,25 +71,6 @@ router.post("/user/auth/login", async (req, res): Promise<void> => {
   const ok = await bcrypt.compare(password, cred.passwordHash);
   if (!ok) { res.status(401).json({ error: "Invalid credentials" }); return; }
 
-  // Attendance currently starts with a successful credential login. Keep this
-  // idempotent so reconnecting or signing in twice does not create overlapping
-  // attendance sessions. The first GPS ping will supply the live map position.
-  const now = new Date();
-  const [openSession] = await db.select().from(sessionsTable)
-    .where(and(eq(sessionsTable.userId, user.id), isNull(sessionsTable.logoutAt)))
-    .limit(1);
-  if (!openSession) {
-    await db.insert(sessionsTable).values({
-      userId: user.id,
-      loginAt: now,
-      loginLat: 0,
-      loginLng: 0,
-    });
-  }
-  await db.update(usersTable)
-    .set({ liveStatus: "ON_SHIFT_IDLE", liveStatusSince: now })
-    .where(eq(usersTable.id, user.id));
-
   const deviceToken = signDeviceJwt({ userId: user.id, role: "USER" });
   res.json(MobileLoginResponse.parse({
     deviceToken,
@@ -142,15 +120,22 @@ router.post("/user/auth/password-reset/request", async (req, res): Promise<void>
       consumedAt: null,
     });
 
-    try {
-      await sendPasswordResetCodeEmail({
-        to: user.email,
-        code,
+    const result = await notifyPasswordResetCode(
+      {
+        customerId: user.customerId,
+        userId: user.id,
+        email: user.email,
+        phoneNumber: user.phoneNumber,
         recipientName: user.firstName,
-      });
-    } catch (error) {
-      req.log.error({ err: error, userId: user.id }, "Failed to send password reset email");
-      res.status(503).json({ error: "Unable to send reset email right now. Please try again." });
+      },
+      { code },
+    );
+    if (!result.ok) {
+      req.log.error(
+        { userId: user.id, whatsapp: result.whatsapp, email: result.email },
+        "Failed to send password reset code",
+      );
+      res.status(503).json({ error: "Unable to send the reset code right now. Please try again." });
       return;
     }
   }
@@ -208,13 +193,18 @@ router.post("/user/auth/password-reset/confirm", async (req, res): Promise<void>
     .set({ consumedAt: new Date() })
     .where(eq(otpTokensTable.id, otp.id));
 
-  try {
-    await sendPasswordChangedEmail({
-      to: user.email,
-      recipientName: user.firstName,
-    });
-  } catch (error) {
-    req.log.error({ err: error, userId: user.id }, "Failed to send password changed email");
+  const notified = await notifyPasswordChanged({
+    customerId: user.customerId,
+    userId: user.id,
+    email: user.email,
+    phoneNumber: user.phoneNumber,
+    recipientName: user.firstName,
+  });
+  if (!notified.ok) {
+    req.log.error(
+      { userId: user.id, whatsapp: notified.whatsapp, email: notified.email },
+      "Failed to send password changed notification",
+    );
   }
 
   res.json({ message: "Password updated. You can now sign in." });

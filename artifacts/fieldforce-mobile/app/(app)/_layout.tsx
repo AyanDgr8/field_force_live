@@ -7,6 +7,7 @@ import { isLiquidGlassAvailable } from 'expo-glass-effect';
 import { Tabs } from 'expo-router';
 import { Icon, Label, NativeTabs } from 'expo-router/unstable-native-tabs';
 import { SymbolView } from 'expo-symbols';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 function NativeTabLayout() {
   return (
@@ -37,6 +38,8 @@ function ClassicTabLayout() {
   const isDark = colorScheme === 'dark';
   const isIOS = Platform.OS === 'ios';
   const isWeb = Platform.OS === 'web';
+  const insets = useSafeAreaInsets();
+  const bottomInset = isWeb ? 12 : Math.max(insets.bottom, 8);
 
   return (
     <Tabs
@@ -45,7 +48,6 @@ function ClassicTabLayout() {
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.mutedForeground,
         tabBarStyle: {
-          position: 'absolute',
           backgroundColor: isIOS ? 'transparent' : colors.card,
           borderTopWidth: 1.5,
           borderTopColor: colors.border,
@@ -54,9 +56,11 @@ function ClassicTabLayout() {
           shadowOffset: { width: 0, height: -8 },
           shadowOpacity: isDark ? 0.32 : 0.14,
           shadowRadius: 18,
-          height: isWeb ? 84 : 72,
+          // Keep the bar in the navigator's layout flow. An absolute bar sits
+          // above screen content and steals taps from controls beneath it.
+          height: 56 + bottomInset,
           paddingTop: 8,
-          paddingBottom: isWeb ? 12 : 8,
+          paddingBottom: bottomInset,
         },
         tabBarLabelStyle: { fontSize: 11, fontWeight: '700' },
         tabBarItemStyle: { borderRadius: 14 },

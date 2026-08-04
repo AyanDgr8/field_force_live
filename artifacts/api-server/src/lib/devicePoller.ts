@@ -284,10 +284,14 @@ async function processOnePing(
   await db
     .update(trackedDevicesTable)
     .set({
+      // Refreshed every poll: the marker shape on the live map is keyed off it,
+      // so a tracker re-typed at the vendor must not stay stale here.
+      vendorType: ping.vendorType ?? null,
       lastFixAt: ping.recordedAt,
       lastLat: ping.latitude,
       lastLng: ping.longitude,
       lastSpeedKph: ping.speedKph ?? null,
+      lastCourseDeg: ping.courseDeg ?? null,
       lastIgnition: ping.ignition ?? null,
       lastAlarm: ping.alarm ?? null,
       totalDistanceRaw: ping.totalDistanceRaw ?? null,

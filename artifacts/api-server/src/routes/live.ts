@@ -218,7 +218,10 @@ router.get("/live/all-positions", requireAuth, async (req, res): Promise<void> =
       deviceId: device.id,
       deviceName: device.name ?? undefined,
       vendorKey: device.vendorKey,
+      // BOLT `type` ("bike" | "car" | "personal" | …) — picks the marker shape.
+      vendorType: device.vendorType ?? undefined,
       imei: device.imei ?? undefined,
+      courseDeg: device.lastCourseDeg ?? null,
       deviceCategoryId: category?.id ?? undefined,
       deviceCategoryKey: category?.key ?? "VEHICLE_TRACKER",
       deviceCategoryColor: category?.colorHex ?? "#f97316",

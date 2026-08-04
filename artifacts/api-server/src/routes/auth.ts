@@ -19,11 +19,11 @@ import {
 } from "@workspace/api-zod";
 import { signJwt, verifyJwt } from "../middlewares/auth.js";
 import {
-  loginOtpRecipients,
-  sendLoginOtpEmail,
-  sendPasswordChangedEmail,
-  sendPasswordResetLinkEmail,
-} from "../lib/mailer.js";
+  loginOtpDestinations,
+  notifyLoginOtp,
+  notifyPasswordChanged,
+  notifyPasswordResetLink,
+} from "../lib/notify.js";
 import { writeOtpLog } from "../lib/otpLog.js";
 import {
   PASSWORD_RESET_LINK_CODE,
@@ -34,13 +34,6 @@ import {
 const router: IRouter = Router();
 
 const isProduction = process.env.NODE_ENV === "production";
-
-function maskEmail(email: string): string {
-  const [local, domain] = email.split("@");
-  if (!local || !domain) return email;
-  const masked = local.slice(0, 2) + "***";
-  return `${masked}@${domain}`;
-}
 
 // POST /auth/login
 router.post("/auth/login", async (req, res): Promise<void> => {
@@ -121,22 +114,37 @@ router.post("/auth/login", async (req, res): Promise<void> => {
     req.log.error({ err: error, userId: user.id }, "Failed to write OTP audit log");
   }
 
-  const otpRecipients = loginOtpRecipients(user.email);
-  // SMTP delivery is intentionally detached from the login request. Production
-  // mail servers can be slow or temporarily unreachable; the OTP is already
-  // persisted and audit-logged, so holding the HTTP response only makes the
-  // dashboard appear frozen. Delivery failures remain visible in API logs.
-  void sendLoginOtpEmail({
-      to: user.email,
-      code,
-      recipientName: user.firstName,
-    })
-    .then(() => req.log.info({ userId: user.id, recipients: otpRecipients.map(maskEmail) }, "Login OTP email sent"))
-    .catch(error => req.log.error({ err: error, userId: user.id }, "Failed to send login OTP email"));
+  const target = {
+    customerId: user.customerId,
+    userId: user.id,
+    email: user.email,
+    phoneNumber: user.phoneNumber,
+    recipientName: user.firstName,
+  };
+  const otpDestinations = await loginOtpDestinations(target);
+
+  // Delivery is intentionally detached from the login request. WhatsApp
+  // providers and production mail servers can both be slow or temporarily
+  // unreachable; the OTP is already persisted and audit-logged, so holding the
+  // HTTP response only makes the dashboard appear frozen. Failures on either
+  // channel remain visible in the API logs and the notification log.
+  void notifyLoginOtp(target, { code })
+    .then(result =>
+      result.ok
+        ? req.log.info(
+            { userId: user.id, whatsapp: result.whatsapp.sentTo, email: result.email.recipients },
+            "Login OTP sent",
+          )
+        : req.log.error(
+            { userId: user.id, whatsapp: result.whatsapp, email: result.email },
+            "Login OTP delivery failed on every channel",
+          ),
+    )
+    .catch(error => req.log.error({ err: error, userId: user.id }, "Failed to send login OTP"));
 
   const data = LoginResponse.parse({
     loginToken,
-    otpSentTo: otpRecipients.map(maskEmail).join(", "),
+    otpSentTo: otpDestinations.join(", "),
   });
   res.json(data);
 });
@@ -308,21 +316,35 @@ router.post("/auth/password-reset/request", async (req, res): Promise<void> => {
     consumedAt: null,
   });
 
-  try {
-    await sendPasswordResetLinkEmail({
-      to: user.email,
+  const result = await notifyPasswordResetLink(
+    {
+      customerId: user.customerId,
+      userId: user.id,
+      email: user.email,
+      phoneNumber: user.phoneNumber,
       recipientName: user.firstName,
+    },
+    {
       resetUrl: passwordResetLinkUrl(user.id, token),
       expiresInMinutes: PASSWORD_RESET_TTL_MINUTES,
-    });
-  } catch (error) {
-    req.log.error({ err: error, userId: user.id }, "Failed to send password reset link");
-    res.status(502).json({ error: "Unable to send the reset email. Please try again." });
+    },
+  );
+
+  // Only a total failure is worth surfacing: as long as one channel accepted
+  // the link, the user has a way to finish the reset.
+  if (!result.ok) {
+    req.log.error(
+      { userId: user.id, whatsapp: result.whatsapp, email: result.email },
+      "Failed to send password reset link",
+    );
+    res.status(502).json({ error: "Unable to send the reset link. Please try again." });
     return;
   }
 
   res.json({
-    message: "Password reset link has been sent to your email. Please check your inbox.",
+    message: result.whatsapp.ok
+      ? "Password reset link sent. Check your WhatsApp and your inbox."
+      : "Password reset link has been sent to your email. Please check your inbox.",
   });
 });
 
@@ -385,10 +407,18 @@ router.post("/auth/password-reset/confirm", async (req, res): Promise<void> => {
     .set({ consumedAt: new Date() })
     .where(eq(otpTokensTable.id, resetToken.id));
 
-  try {
-    await sendPasswordChangedEmail({ to: user.email, recipientName: user.firstName });
-  } catch (error) {
-    req.log.error({ err: error, userId: user.id }, "Failed to send password changed email");
+  const notified = await notifyPasswordChanged({
+    customerId: user.customerId,
+    userId: user.id,
+    email: user.email,
+    phoneNumber: user.phoneNumber,
+    recipientName: user.firstName,
+  });
+  if (!notified.ok) {
+    req.log.error(
+      { userId: user.id, whatsapp: notified.whatsapp, email: notified.email },
+      "Failed to send password changed notification",
+    );
   }
 
   res.json({ message: "Password reset successful" });

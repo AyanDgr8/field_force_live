@@ -14,7 +14,6 @@ import React, {
   useCallback,
   useContext,
   useEffect,
-  useRef,
   useState,
 } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -52,7 +51,6 @@ const ShiftContext = createContext<ShiftContextValue | null>(null);
 export function ShiftProvider({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
   const { getCoords } = useLocation();
-  const previousUserIdRef = useRef<number | null>(null);
 
   const [state, setState] = useState<ShiftState>({
     status: 'CLOCKED_OUT',
@@ -122,16 +120,6 @@ export function ShiftProvider({ children }: { children: React.ReactNode }) {
       throw e;
     }
   }, [user, getCoords, persist]);
-
-  // A newly authenticated rider is on shift immediately. The backend records
-  // attendance during credential login; this keeps the local shift UI in sync.
-  useEffect(() => {
-    const nextUserId = user?.id ?? null;
-    if (nextUserId != null && previousUserIdRef.current !== nextUserId) {
-      void clockIn();
-    }
-    previousUserIdRef.current = nextUserId;
-  }, [user?.id, clockIn]);
 
   // ── Clock Out ─────────────────────────────────────────────────────────────
 

@@ -1,11 +1,12 @@
 import { Router, type IRouter } from "express";
-import { eq, and, gte, lte, lt, asc, desc, isNotNull } from "drizzle-orm";
+import { eq, and, gte, lte, lt, asc, desc, isNotNull, isNull } from "drizzle-orm";
 import { db } from "@workspace/db";
 import {
   usersTable,
   sessionsTable,
   locationPingsTable,
   dwellSegmentsTable,
+  deliveryRecordsTable,
 } from "@workspace/db";
 import {
   ListUserSessionsQueryParams,
@@ -40,6 +41,50 @@ function normalizeDateQuery(value: unknown): unknown {
   // Date-only query parameters must be parsed explicitly. z.date() accepts
   // Date instances, while Express always supplies query values as strings.
   return new Date(`${value}T00:00:00.000Z`);
+}
+
+function normalizeEmployeeId(value: unknown) {
+  const raw = String(value ?? "").trim().replace(/\.0+$/, "");
+  if (!raw) return "";
+  if (/^[+-]?\d+(?:\.\d+)?e[+-]?\d+$/i.test(raw)) {
+    const numeric = Number(raw);
+    if (Number.isFinite(numeric) && Number.isSafeInteger(numeric)) return numeric.toFixed(0);
+  }
+  return raw;
+}
+
+function sheetDate(rawData: unknown): string | null {
+  if (!rawData || typeof rawData !== "object") return null;
+  const value = String((rawData as Record<string, unknown>).SheetCreateDateTime ?? "").trim();
+  return value.match(/^(\d{4}-\d{2}-\d{2})/)?.[1] ?? null;
+}
+
+async function sheetAttendance(customerId: number, from?: string, to?: string) {
+  const users = await db.select().from(usersTable).where(and(
+    eq(usersTable.customerId, customerId), eq(usersTable.role, "USER"), isNull(usersTable.deletedAt),
+  ));
+  const deliveries = await db.select({
+    fhrId: deliveryRecordsTable.fhrId,
+    agentName: deliveryRecordsTable.agentName,
+    rawData: deliveryRecordsTable.rawData,
+  }).from(deliveryRecordsTable).where(eq(deliveryRecordsTable.customerId, customerId));
+  const datedRows = deliveries.map(row => ({ ...row, date: sheetDate(row.rawData) }))
+    .filter((row): row is typeof row & { date: string } => Boolean(row.date))
+    .filter(row => (!from || row.date >= from) && (!to || row.date <= to));
+  const dates = [...new Set(datedRows.map(row => row.date))].sort();
+
+  return dates.flatMap(date => users.map(user => {
+    const ids = new Set([normalizeEmployeeId(user.employeeCode), normalizeEmployeeId(user.flipkartId)].filter(Boolean));
+    const match = datedRows.find(row =>
+      row.date === date && Boolean(row.agentName?.trim()) && ids.has(normalizeEmployeeId(row.fhrId))
+    );
+    return {
+      date, userId: user.id, employeeId: user.flipkartId || user.employeeCode,
+      bikerName: `${user.firstName} ${user.lastName}`.trim(),
+      status: match ? "PRESENT" as const : "ABSENT" as const,
+      sheetAgentName: match?.agentName ?? null,
+    };
+  }));
 }
 
 // GET /sessions?userId=&from=&to=
@@ -166,7 +211,19 @@ router.get("/dwell-segments", requireAuth, async (req, res): Promise<void> => {
   res.json(GetUserDwellSegmentsResponse.parse(segs));
 });
 
-// GET /attendance?userId=&from=&to=
+// GET /attendance/sheet?from=&to= -- daily presence from uploaded BigQuery sheets
+router.get("/attendance/sheet", requireAuth, async (req, res): Promise<void> => {
+  const customerId = await getAdminCustomerId(req.adminUserId!);
+  if (!customerId) { res.status(401).json({ error: "Admin not found" }); return; }
+  const from = typeof req.query.from === "string" ? req.query.from : undefined;
+  const to = typeof req.query.to === "string" ? req.query.to : undefined;
+  if ((from && !/^\d{4}-\d{2}-\d{2}$/.test(from)) || (to && !/^\d{4}-\d{2}-\d{2}$/.test(to))) {
+    res.status(400).json({ error: "Dates must use YYYY-MM-DD" }); return;
+  }
+  res.json(await sheetAttendance(customerId, from, to));
+});
+
+// GET /attendance?userId=&from=&to= (legacy app-session report)
 router.get("/attendance", requireAuth, async (req, res): Promise<void> => {
   const q = GetUserAttendanceReportQueryParams.safeParse({
     ...req.query,
@@ -221,40 +278,12 @@ router.get("/attendance/export", requireAuth, async (req, res): Promise<void> =>
   const fromParam = req.query.from as string | undefined;
   const toParam = req.query.to as string | undefined;
 
-  const users = await db.select().from(usersTable)
-    .where(and(eq(usersTable.customerId, customerId), eq(usersTable.role, "USER")));
-
-  const rows: string[] = ["employeeCode,firstName,lastName,date,loginAt,logoutAt,totalHours"];
-
-  for (const u of users) {
-    const conditions = [eq(sessionsTable.userId, u.id)];
-    if (fromParam) conditions.push(gte(sessionsTable.loginAt, new Date(fromParam)));
-    if (toParam) {
-      const toExclusive = new Date(`${toParam}T00:00:00.000Z`);
-      toExclusive.setUTCDate(toExclusive.getUTCDate() + 1);
-      conditions.push(lt(sessionsTable.loginAt, toExclusive));
-    }
-
-    const sessions = await db.select().from(sessionsTable)
-      .where(and(...conditions))
-      .orderBy(sessionsTable.loginAt);
-
-    for (const s of sessions) {
-      const totalHours = s.logoutAt
-        ? Math.round((s.logoutAt.getTime() - s.loginAt.getTime()) / 36000) / 100
-        : "";
-      const date = s.loginAt.toISOString().slice(0, 10);
-      rows.push([
-        u.employeeCode,
-        u.firstName,
-        u.lastName,
-        date,
-        s.loginAt.toISOString(),
-        s.logoutAt ? s.logoutAt.toISOString() : "",
-        String(totalHours),
-      ].join(","));
-    }
-  }
+  const attendance = await sheetAttendance(customerId, fromParam, toParam);
+  const csv = (value: unknown) => `"${String(value ?? "").replace(/"/g, '""')}"`;
+  const rows: string[] = ["date,employeeId,bikerName,status,sheetAgentName"];
+  for (const record of attendance) rows.push([
+    record.date, record.employeeId, record.bikerName, record.status, record.sheetAgentName ?? "",
+  ].map(csv).join(","));
 
   res.type("text/csv");
   res.attachment(`attendance-export-${new Date().toISOString().slice(0, 10)}.csv`);

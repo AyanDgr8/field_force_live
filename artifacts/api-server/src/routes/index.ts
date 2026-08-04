@@ -19,6 +19,7 @@ import deviceCategoriesRouter from "./deviceCategories";
 import iotOperationsRouter from "./iotOperations";
 import organizationRouter from "./organization";
 import geoRouter from "./geo";
+import notificationsRouter from "./notifications";
 
 const router: IRouter = Router();
 
@@ -42,5 +43,6 @@ router.use(deviceCategoriesRouter);
 router.use(iotOperationsRouter);
 router.use(organizationRouter);
 router.use(geoRouter);
+router.use(notificationsRouter);
 
 export default router;

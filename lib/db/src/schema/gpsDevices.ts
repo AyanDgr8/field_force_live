@@ -52,7 +52,7 @@ export const deviceCategoriesTable = mysqlTable("device_categories", {
   key: text("key").notNull(),
   label: text("label").notNull(),
   colorHex: text("color_hex").notNull(),
-  iconKey: text("icon_key").notNull(), // "smartphone" | "car" | "user" | "package"
+  iconKey: text("icon_key").notNull(), // "smartphone" | "bike" | "car" | "user" | "package"
   sortOrder: int("sort_order").notNull().default(0),
   active: boolean("active").notNull().default(true),
 });
@@ -82,6 +82,8 @@ export const trackedDevicesTable = mysqlTable("tracked_devices", {
   lastLat: double("last_lat"),
   lastLng: double("last_lng"),
   lastSpeedKph: double("last_speed_kph"),
+  // Heading in degrees 0-359 from the last fix — rotates the map marker.
+  lastCourseDeg: double("last_course_deg"),
   lastIgnition: boolean("last_ignition"),
   lastAlarm: text("last_alarm"),
   totalDistanceRaw: double("total_distance_raw"),

@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { useLocation, Link } from 'wouter';
 import { useQuery } from '@tanstack/react-query';
 import { useGetMe, useLogout } from '@workspace/api-client-react';
-import { Loader2, Map, Users, AlertTriangle, Settings, LogOut, Activity, CalendarDays, Cpu, Link2, QrCode, RadioTower, Warehouse, Crown, MapPinned, UserCog, Bike, FileCheck2, PackageCheck, ChevronDown } from 'lucide-react';
+import { Loader2, Map, Users, AlertTriangle, Settings, LogOut, Activity, CalendarDays, Cpu, Link2, QrCode, RadioTower, Warehouse, Crown, MapPinned, UserCog, Bike, FileCheck2, PackageCheck, ChevronDown, MessageCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ToastAction } from '@/components/ui/toast';
 import { useToast } from '@/hooks/use-toast';
@@ -93,6 +93,13 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           <p className="px-3 text-[10px] font-semibold uppercase tracking-widest text-sidebar-foreground/40 mb-1 mt-3">GPS Devices</p>
           <NavItem href="/devices" icon={<Cpu className="w-5 h-5" />} label="Tracked Devices" />
           <NavItem href="/vendor-accounts" icon={<Link2 className="w-5 h-5" />} label="Vendor Accounts" />
+
+          {user.role === 'SUPER_ADMIN' && (
+            <>
+              <p className="px-3 text-[10px] font-semibold uppercase tracking-widest text-sidebar-foreground/40 mb-1 mt-3">Notifications</p>
+              <NavItem href="/whatsapp-notifications" icon={<MessageCircle className="w-5 h-5" />} label="WhatsApp Setup" />
+            </>
+          )}
         </div>
 
       </aside>

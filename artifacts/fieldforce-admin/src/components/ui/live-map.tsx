@@ -1,5 +1,6 @@
 import { useEffect, useRef, useCallback, useMemo, useState } from 'react';
 import { GoogleMap, OverlayView } from '@react-google-maps/api';
+import { Bike } from 'lucide-react';
 import { GOOGLE_MAPS_API_KEY, useGoogleMaps } from '@/lib/google-maps';
 import { MapTypeToggle, type MapView } from '@/components/ui/map-type-toggle';
 import { cn } from '@/lib/utils';
@@ -28,6 +29,8 @@ export interface UnifiedPosition {
   deviceId?: number;
   deviceName?: string;
   vendorKey?: string;
+  /** Vendor-reported hardware type — BOLT `type`: "bike" | "car" | "personal" | … */
+  vendorType?: string | null;
   deviceCategoryId?: number;
   deviceCategoryKey?: string;
   deviceCategoryColor?: string;
@@ -99,6 +102,34 @@ function VehiclePin({ color, courseDeg, ignition, alarm, stale }: { color: strin
   );
 }
 
+/**
+ * Two-wheeler marker. The bike glyph stays upright so it stays readable at any
+ * heading; the arrow orbiting the badge carries the direction of travel instead.
+ * Ignition OFF renders hollow (spec: solid when on, outline when off).
+ */
+function BikePin({ color, courseDeg, ignition, alarm, stale }: { color: string; courseDeg?: number | null; ignition?: boolean | null; alarm?: string | null; stale?: boolean }) {
+  const fill = stale ? '#94a3b8' : color;
+  const off = ignition === false;
+  return (
+    <div className="relative w-8 h-8" style={{ transform: 'translate(-50%, -50%)' }}>
+      {courseDeg != null && (
+        <div className="absolute inset-0 flex justify-center" style={{ transform: `rotate(${courseDeg}deg)` }}>
+          <svg width="10" height="8" viewBox="0 0 10 8" style={{ marginTop: -10 }}>
+            <polygon points="5,0 10,8 0,8" fill={fill} stroke="white" strokeWidth="1.5" strokeLinejoin="round" />
+          </svg>
+        </div>
+      )}
+      <div
+        className="w-8 h-8 rounded-full border-2 flex items-center justify-center shadow-lg"
+        style={{ backgroundColor: off ? 'white' : fill, borderColor: off ? fill : 'white' }}
+      >
+        <Bike className="w-[18px] h-[18px]" strokeWidth={2.25} style={{ color: off ? fill : 'white' }} />
+      </div>
+      {alarm && <span className="absolute -top-0.5 -right-0.5 w-3 h-3 bg-red-500 rounded-full border border-white z-10" />}
+    </div>
+  );
+}
+
 function PersonPin({ color, stale }: { color: string; stale?: boolean }) {
   const fill = stale ? '#94a3b8' : color;
   return (
@@ -126,6 +157,27 @@ function AssetPin({ color, stale }: { color: string; stale?: boolean }) {
   );
 }
 
+// ─── Device shape resolution ──────────────────────────────────────────────────
+
+type DeviceShape = 'bike' | 'car' | 'person' | 'asset';
+
+/**
+ * Vendor `type` values that mean four wheels. Anything else on a vehicle
+ * tracker renders as a bike — the field fleet is two-wheeler-first.
+ * Empty this list to force every tracker to the bike pin.
+ */
+const FOUR_WHEELER_TYPES = ['car', 'truck', 'van', 'bus', 'lorry', 'taxi', 'jeep', 'tempo'];
+
+function resolveDeviceShape(pos: UnifiedPosition): DeviceShape {
+  switch (pos.deviceCategoryKey) {
+    case 'PERSONAL_TRACKER': return 'person';
+    case 'ASSET_TAG': return 'asset';
+  }
+  const type = (pos.vendorType ?? '').toLowerCase();
+  if (FOUR_WHEELER_TYPES.some(t => type.includes(t))) return 'car';
+  return 'bike';
+}
+
 // ─── Main marker dispatcher ───────────────────────────────────────────────────
 function MarkerPin({ pos }: { pos: UnifiedPosition }) {
   // Selection is rendered as a ring around the marker, so retain the status
@@ -133,26 +185,27 @@ function MarkerPin({ pos }: { pos: UnifiedPosition }) {
   const color = getCategoryColor(pos);
   const ageMs = Date.now() - new Date(pos.recordedAt).getTime();
   const stale = ageMs > 10 * 60 * 1000;
-  const categoryKey = pos.deviceCategoryKey ?? (pos.sourceType === 'MOBILE_APP' ? 'MOBILE_APP' : 'VEHICLE_TRACKER');
 
-  switch (categoryKey) {
-    case 'MOBILE_APP':
-      return (
-        <MobilePin
-          color={color}
-          initials={(pos.firstName?.[0] ?? '') + (pos.lastName?.[0] ?? '?')}
-          emergency={pos.emergencyActive}
-          stale={false}
-        />
-      );
-    case 'VEHICLE_TRACKER':
-      return <VehiclePin color={color} courseDeg={pos.courseDeg} ignition={pos.ignition} alarm={pos.alarm} stale={stale} />;
-    case 'PERSONAL_TRACKER':
+  if (pos.sourceType === 'MOBILE_APP') {
+    return (
+      <MobilePin
+        color={color}
+        initials={(pos.firstName?.[0] ?? '') + (pos.lastName?.[0] ?? '?')}
+        emergency={pos.emergencyActive}
+        stale={false}
+      />
+    );
+  }
+
+  switch (resolveDeviceShape(pos)) {
+    case 'person':
       return <PersonPin color={color} stale={stale} />;
-    case 'ASSET_TAG':
+    case 'asset':
       return <AssetPin color={color} stale={stale} />;
-    default:
+    case 'car':
       return <VehiclePin color={color} courseDeg={pos.courseDeg} ignition={pos.ignition} alarm={pos.alarm} stale={stale} />;
+    default:
+      return <BikePin color={color} courseDeg={pos.courseDeg} ignition={pos.ignition} alarm={pos.alarm} stale={stale} />;
   }
 }
 
@@ -168,7 +221,9 @@ function MarkerWithTooltip({ pos, onClick, selected = false }: { pos: UnifiedPos
     ? `${pos.firstName} ${pos.lastName} (${pos.employeeCode})`
     : (pos.deviceName ?? pos.imei ?? `Device #${pos.deviceId}`);
 
-  const source = pos.sourceType === 'MOBILE_APP' ? 'Mobile App' : `GPS Device — ${pos.vendorKey}`;
+  const source = pos.sourceType === 'MOBILE_APP'
+    ? 'Mobile App'
+    : `GPS Device — ${pos.vendorKey}${pos.vendorType ? ` · ${pos.vendorType}` : ''}`;
   const agentStatus = pos.emergencyActive
     ? 'Emergency'
     : pos.liveStatus === 'ON_SHIFT_IDLE'
@@ -211,6 +266,12 @@ function MarkerWithTooltip({ pos, onClick, selected = false }: { pos: UnifiedPos
 }
 
 // ─── Map legend ───────────────────────────────────────────────────────────────
+const LEGEND_GLYPHS: Record<string, string> = {
+  VEHICLE_TRACKER: '🏍 bike',
+  PERSONAL_TRACKER: '◎ person',
+  ASSET_TAG: '■ square',
+};
+
 function Legend({ categories }: { categories: { key: string; label: string; color: string }[] }) {
   return (
     <div className="absolute bottom-6 left-3 bg-white/95 backdrop-blur-sm border rounded-lg shadow-md px-3 py-2.5 z-10">
@@ -220,7 +281,7 @@ function Legend({ categories }: { categories: { key: string; label: string; colo
           <span className="w-3 h-3 rounded-sm border border-white shadow-sm" style={{ backgroundColor: c.color }} />
           {c.label}
           <span className="text-muted-foreground">
-            {c.key.startsWith('MOBILE_') ? '● circle' : c.key === 'VEHICLE_TRACKER' ? '▲ arrow' : c.key === 'PERSONAL_TRACKER' ? '◎ person' : '■ square'}
+            {c.key.startsWith('MOBILE_') ? '● circle' : LEGEND_GLYPHS[c.key] ?? '🏍 bike'}
           </span>
         </div>
       ))}

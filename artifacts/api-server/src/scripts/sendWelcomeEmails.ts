@@ -1,5 +1,8 @@
 /**
- * Resend the standard welcome email to every non-suspended account in a role.
+ * Resend the standard welcome message to every non-suspended account in a role.
+ *
+ * Delivery follows the tenant's configured channels (WhatsApp, email, or both),
+ * the same as an account created from the dashboard.
  *
  * From the workspace root:
  *   node sendEmail.js USER
@@ -74,16 +77,19 @@ const dryRun = cliArguments.includes("--dry-run");
 const { db, pool, usersTable } = await import("@workspace/db");
 const { DEFAULT_USER_PASSWORD, loginUrl, mobileAppUrl, passwordResetRequestUrl } =
   await import("../lib/accounts.js");
-const { sendWelcomeEmail, verifyEmailConnection } =
-  await import("../lib/mailer.js");
+const { verifyEmailConnection } = await import("../lib/mailer.js");
+const { notifyWelcome } = await import("../lib/notify.js");
+const { loadWhatsappSettings } = await import("../lib/whatsapp/index.js");
 
 try {
   const users = await db
     .select({
       id: usersTable.id,
+      customerId: usersTable.customerId,
       firstName: usersTable.firstName,
       lastName: usersTable.lastName,
       email: usersTable.email,
+      phoneNumber: usersTable.phoneNumber,
     })
     .from(usersTable)
     .where(
@@ -99,35 +105,59 @@ try {
     console.log(`No eligible ${role} accounts found.`);
     process.exitCode = 0;
   } else if (dryRun) {
-    console.log(`Dry run: ${users.length} ${role} welcome email(s) would be sent:`);
+    console.log(`Dry run: ${users.length} ${role} welcome message(s) would be sent:`);
     for (const user of users) {
-      console.log(`  #${user.id} ${user.firstName} ${user.lastName} <${user.email}>`);
+      console.log(
+        `  #${user.id} ${user.firstName} ${user.lastName} <${user.email}> ${user.phoneNumber}`,
+      );
     }
   } else {
-    await verifyEmailConnection();
-    console.log(`Sending ${users.length} ${role} welcome email(s)...`);
+    // Every account in a run shares a tenant in practice, so one lookup is
+    // enough to decide whether SMTP needs checking at all.
+    const settings = await loadWhatsappSettings(users[0]!.customerId).catch(() => null);
+    if (settings?.channelMode !== "WHATSAPP_ONLY") await verifyEmailConnection();
+
+    console.log(
+      `Sending ${users.length} ${role} welcome message(s) over ${settings?.channelMode ?? "BOTH"}...`,
+    );
 
     let sent = 0;
     let failed = 0;
 
     for (const user of users) {
-      try {
-        await sendWelcomeEmail({
-          to: user.email,
+      const result = await notifyWelcome(
+        {
+          customerId: user.customerId,
+          userId: user.id,
+          email: user.email,
+          phoneNumber: user.phoneNumber,
           recipientName: user.firstName,
+        },
+        {
           loginEmail: user.email,
           password: DEFAULT_USER_PASSWORD,
           loginUrl: loginUrl(),
           resetUrl: passwordResetRequestUrl(),
           role: ROLE_LABELS[role],
           mobileAppUrl: role === "USER" ? mobileAppUrl() : undefined,
-        });
+        },
+      );
+
+      if (result.ok) {
         sent += 1;
-        console.log(`SENT   #${user.id} ${user.email}`);
-      } catch (error) {
+        const channels = [
+          result.whatsapp.ok ? "whatsapp" : null,
+          result.email.ok ? "email" : null,
+        ].filter(Boolean).join("+");
+        console.log(`SENT   #${user.id} ${user.email} (${channels})`);
+      } else {
         failed += 1;
-        const message = error instanceof Error ? error.message : String(error);
-        console.error(`FAILED #${user.id} ${user.email}: ${message}`);
+        const reason =
+          result.whatsapp.errors[0] ??
+          result.email.error ??
+          result.whatsapp.skippedReason ??
+          "no channel available";
+        console.error(`FAILED #${user.id} ${user.email}: ${reason}`);
       }
     }
 

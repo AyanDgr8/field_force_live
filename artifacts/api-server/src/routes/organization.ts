@@ -11,7 +11,7 @@ import {
 } from "@workspace/db";
 import { requireAuth } from "../middlewares/auth.js";
 import { DEFAULT_USER_PASSWORD, loginUrl, mobileAppUrl, passwordResetRequestUrl } from "../lib/accounts.js";
-import { sendWelcomeEmail } from "../lib/mailer.js";
+import { notifyWelcome } from "../lib/notify.js";
 import { purgeUser } from "../lib/userPurge.js";
 
 const router: IRouter = Router();
@@ -68,6 +68,16 @@ function spreadsheetValue(row: Record<string, unknown>, aliases: string[]) {
   const wanted = new Set(aliases.map(normalizedHeader));
   const entry = Object.entries(row).find(([header]) => wanted.has(normalizedHeader(header)));
   return String(entry?.[1] ?? "").trim().replace(/\.0+$/, "");
+}
+
+function normalizeEmployeeId(value: unknown) {
+  const raw = String(value ?? "").trim().replace(/\.0+$/, "");
+  if (!raw) return "";
+  if (/^[+-]?\d+(?:\.\d+)?e[+-]?\d+$/i.test(raw)) {
+    const numeric = Number(raw);
+    if (Number.isFinite(numeric) && Number.isSafeInteger(numeric)) return numeric.toFixed(0);
+  }
+  return raw;
 }
 
 function splitPersonName(value: string) {
@@ -212,25 +222,40 @@ router.post("/hierarchy/users", requireAuth, async (req, res): Promise<void> => 
     const token = uuidv4(); onboardingLink = `/onboarding/${token}`;
     await db.insert(onboardingInvitesTable).values({ userId: user.id, token, channel: "EMAIL", deepLink: onboardingLink });
   }
-  // The account already exists at this point, so a bounced welcome email must
+  // The account already exists at this point, so a bounced welcome message must
   // not fail the request — it is reported back instead.
-  let welcomeEmailSent = true;
-  try {
-    await sendWelcomeEmail({
-      to: user.email,
+  const welcomed = await notifyWelcome(
+    {
+      customerId: user.customerId,
+      userId: user.id,
+      email: user.email,
+      phoneNumber: user.phoneNumber,
       recipientName: user.firstName,
+    },
+    {
       loginEmail: user.email,
       password: temporaryPassword,
       loginUrl: loginUrl(),
       resetUrl: passwordResetRequestUrl(),
       role: ROLE_LABELS[user.role] ?? user.role,
       mobileAppUrl: user.role === "USER" ? mobileAppUrl() : undefined,
-    });
-  } catch (error) {
-    welcomeEmailSent = false;
-    req.log.error({ err: error, userId: user.id }, "Failed to send welcome email");
+    },
+  );
+  if (!welcomed.ok) {
+    req.log.error(
+      { userId: user.id, whatsapp: welcomed.whatsapp, email: welcomed.email },
+      "Failed to send welcome notification",
+    );
   }
-  res.status(201).json({ user, onboardingLink, temporaryPassword, welcomeEmailSent });
+  // welcomeEmailSent is part of the existing response contract; it now reports
+  // the email channel specifically, with the WhatsApp result added alongside.
+  res.status(201).json({
+    user,
+    onboardingLink,
+    temporaryPassword,
+    welcomeEmailSent: welcomed.email.ok,
+    welcomeWhatsappSent: welcomed.whatsapp.ok,
+  });
 });
 
 router.get("/hierarchy/users", requireAuth, async (req, res): Promise<void> => {
@@ -516,10 +541,15 @@ router.post("/deliveries/import", requireAuth, async (req, res): Promise<void> =
     await db.update(importJobsTable).set({ status: "COMPLETED_WITH_WARNINGS", warnings: ["Aggregated/pivot CSV detected. Shipment-level columns FHRID and ShipmentId are required."], failedRows: rows.length, completedAt: new Date() }).where(eq(importJobsTable.id, job.id));
     res.status(422).json({ error: "This is an aggregated report. Upload the shipment-level BigQuery CSV.", jobId: job.id }); return;
   }
+  const riders = await db.select().from(usersTable).where(and(
+    eq(usersTable.customerId, me.customerId), eq(usersTable.role, "USER"), isNull(usersTable.deletedAt),
+  ));
   let matched = 0;
   for (const row of rows) {
-    const fhrId = row.FHRID.replace(/\\.0+$/, "");
-    const [user] = await db.select().from(usersTable).where(and(eq(usersTable.customerId, me.customerId), eq(usersTable.flipkartId, fhrId))).limit(1);
+    const fhrId = normalizeEmployeeId(row.FHRID);
+    const user = riders.find(rider =>
+      normalizeEmployeeId(rider.flipkartId) === fhrId || normalizeEmployeeId(rider.employeeCode) === fhrId
+    );
     if (user) matched++;
     await db.insert(deliveryRecordsTable).values({
       customerId: me.customerId, importJobId: job.id, userId: user?.id, fhrId, runsheetId: row.RunsheetId,
