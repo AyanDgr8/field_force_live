@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
 
 const BASE = import.meta.env.BASE_URL.replace(/\/$/, '');
@@ -101,16 +102,16 @@ export default function VehicleConfiguration() {
     },
     onError: (error: Error) => toast({ title: 'Vehicle command failed', description: error.message, variant: 'destructive' }),
   });
-  const submit = (event: React.FormEvent<HTMLFormElement>) => {
+  const submit = (event: React.FormEvent<HTMLFormElement>, target: Vehicle | null = editing) => {
     event.preventDefault(); const form = new FormData(event.currentTarget);
     const value = (name: string) => String(form.get(name) ?? '').trim() || null;
     const body = {
       hubId: Number(form.get('hubId')), registrationNumber: value('registrationNumber'),
       vehicleType: form.get('vehicleType'), make: value('make'), model: value('model'), color: value('color'),
       chassisNumber: value('chassisNumber'), engineNumber: value('engineNumber'), imei: value('imei'),
-      iotVendor: value('iotVendor'), ...(editing ? { status: form.get('status'), active: form.get('active') === 'on' } : {}),
+      iotVendor: value('iotVendor'), ...(target ? { status: form.get('status'), active: form.get('active') === 'on' } : {}),
     };
-    if (editing) update.mutate({ id: editing.id, body }); else create.mutate(body);
+    if (target) update.mutate({ id: target.id, body }); else create.mutate(body);
   };
   const pending = create.isPending || update.isPending;
   return <div className="space-y-6 pb-12">
@@ -151,8 +152,8 @@ export default function VehicleConfiguration() {
           return <div
             key={vehicle.id}
             className={isLive
-              ? "flex flex-col rounded-lg border-2 border-emerald-400 bg-emerald-50/80 p-4 shadow-sm shadow-emerald-500/10"
-              : "flex flex-col rounded-lg border p-4"}
+              ? "status-live-surface flex flex-col rounded-2xl border p-4"
+              : "flex flex-col rounded-2xl border border-slate-200/90 bg-white/75 p-4 shadow-sm transition hover:border-indigo-200 hover:shadow-md"}
           >
             <div className="flex justify-between gap-2">
               <span className="font-semibold truncate">{vehicle.registrationNumber}</span>
@@ -176,11 +177,11 @@ export default function VehicleConfiguration() {
             )}
             {device ? (
               <div className={isLive
-                ? "mt-2 space-y-0.5 rounded-md border border-emerald-200 bg-emerald-100/70 px-2 py-1.5 text-xs"
+                ? "mt-2 space-y-0.5 rounded-xl border border-emerald-200/80 bg-white/70 px-3 py-2 text-xs shadow-sm"
                 : "mt-2 space-y-0.5 rounded-md bg-muted/50 px-2 py-1.5 text-xs"}>
                 <div className="flex items-center gap-1.5 font-medium">
                   {device.status === 'ONLINE'
-                    ? <><Wifi className="w-3 h-3 text-green-600"/><span className="text-green-700">Live</span></>
+                    ? <><span className="relative flex h-2.5 w-2.5"><span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-40"/><span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500"/></span><Wifi className="w-3 h-3 text-emerald-600"/><span className="font-bold text-emerald-700">Live</span></>
                     : <><WifiOff className="w-3 h-3 text-slate-400"/><span className="text-slate-500">Offline</span></>}
                   <span className="ml-auto font-mono text-muted-foreground">{device.vendorKey}</span>
                 </div>
@@ -243,7 +244,7 @@ export default function VehicleConfiguration() {
                 </div>
               </details>
             )}
-            <Button type="button" variant="outline" size="sm" className="mt-3 self-start" onClick={() => { setEditing(vehicle); requestAnimationFrame(() => document.getElementById('vehicle-form')?.scrollIntoView({ behavior: 'smooth', block: 'start' })); }}>
+            <Button type="button" variant="outline" size="sm" className="mt-3 self-start" onClick={() => setEditing(vehicle)}>
               <Pencil className="w-3.5 h-3.5 mr-2"/>Edit vehicle
             </Button>
           </div>;
@@ -255,13 +256,31 @@ export default function VehicleConfiguration() {
         )}
       </CardContent>
     </Card>
-    <Card id="vehicle-form"><CardHeader><CardTitle className="flex gap-2">{editing ? <Pencil className="w-5 h-5"/> : <Plus className="w-5 h-5"/>}{editing ? `Edit ${editing.registrationNumber}` : 'Add vehicle'}</CardTitle><CardDescription>IoT vendor fields can be completed now or when the device integration is supplied.</CardDescription></CardHeader>
-      <CardContent><form key={editing?.id ?? 'new'} onSubmit={submit} className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {fields.map(([name, label]) => <div key={name}><Label>{label}</Label><Input name={name} defaultValue={editing?.[name] ?? ''} required={name === 'registrationNumber'}/></div>)}
-        <div><Label>Type</Label><select name="vehicleType" defaultValue={editing?.vehicleType ?? 'TWO_WHEELER'} className="h-10 w-full border rounded-md px-3 bg-background"><option>TWO_WHEELER</option><option>THREE_WHEELER</option><option>FOUR_WHEELER</option></select></div>
-        <div><Label>Hub</Label><select name="hubId" defaultValue={editing?.hubId ?? ''} required className="h-10 w-full border rounded-md px-3 bg-background"><option value="">Select</option>{data?.hubs.map(h => <option key={h.id} value={h.id}>{h.name}</option>)}</select></div>
-        {editing && <><div><Label>Status</Label><select name="status" defaultValue={editing.status} className="h-10 w-full border rounded-md px-3 bg-background"><option>AVAILABLE</option><option>ASSIGNED</option><option>MAINTENANCE</option><option>INACTIVE</option></select></div><label className="flex items-center gap-2 text-sm"><input name="active" type="checkbox" defaultChecked={editing.active}/>Vehicle is active</label></>}
-        <div className="flex items-end gap-2"><Button disabled={pending}>{editing ? 'Save changes' : 'Create vehicle'}</Button>{editing && <Button type="button" variant="outline" onClick={() => setEditing(null)}><X className="w-4 h-4 mr-2"/>Cancel</Button>}</div>
+    <Dialog open={editing !== null} onOpenChange={open => { if (!open) setEditing(null); }}>
+      <DialogContent className="max-h-[90vh] max-w-5xl overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2"><Pencil className="h-5 w-5"/>Edit {editing?.registrationNumber}</DialogTitle>
+          <DialogDescription>IoT vendor fields can be completed now or when the device integration is supplied.</DialogDescription>
+        </DialogHeader>
+        {editing && <form key={editing.id} onSubmit={submit} className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {fields.map(([name, label]) => <div key={name}><Label>{label}</Label><Input name={name} defaultValue={editing[name] ?? ''} required={name === 'registrationNumber'}/></div>)}
+          <div><Label>Type</Label><select name="vehicleType" defaultValue={editing.vehicleType} className="h-10 w-full rounded-lg border bg-background px-3"><option>TWO_WHEELER</option><option>THREE_WHEELER</option><option>FOUR_WHEELER</option></select></div>
+          <div><Label>Hub</Label><select name="hubId" defaultValue={editing.hubId ?? ''} required className="h-10 w-full rounded-lg border bg-background px-3"><option value="">Select</option>{data?.hubs.map(h => <option key={h.id} value={h.id}>{h.name}</option>)}</select></div>
+          <div><Label>Status</Label><select name="status" defaultValue={editing.status} className="h-10 w-full rounded-lg border bg-background px-3"><option>AVAILABLE</option><option>ASSIGNED</option><option>MAINTENANCE</option><option>INACTIVE</option></select></div>
+          <label className="flex items-center gap-2 self-end pb-2 text-sm"><input name="active" type="checkbox" defaultChecked={editing.active}/>Vehicle is active</label>
+          <div className="flex items-end justify-end gap-2 sm:col-span-2 lg:col-span-4">
+            <Button type="button" variant="outline" onClick={() => setEditing(null)}><X className="h-4 w-4"/>Cancel</Button>
+            <Button disabled={pending}>{update.isPending ? 'Saving…' : 'Save changes'}</Button>
+          </div>
+        </form>}
+      </DialogContent>
+    </Dialog>
+    <Card id="vehicle-form"><CardHeader><CardTitle className="flex gap-2"><Plus className="w-5 h-5"/>Add vehicle</CardTitle><CardDescription>IoT vendor fields can be completed now or when the device integration is supplied.</CardDescription></CardHeader>
+      <CardContent><form key="new" onSubmit={event => submit(event, null)} className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        {fields.map(([name, label]) => <div key={name}><Label>{label}</Label><Input name={name} defaultValue="" required={name === 'registrationNumber'}/></div>)}
+        <div><Label>Type</Label><select name="vehicleType" defaultValue="TWO_WHEELER" className="h-10 w-full border rounded-md px-3 bg-background"><option>TWO_WHEELER</option><option>THREE_WHEELER</option><option>FOUR_WHEELER</option></select></div>
+        <div><Label>Hub</Label><select name="hubId" defaultValue="" required className="h-10 w-full border rounded-md px-3 bg-background"><option value="">Select</option>{data?.hubs.map(h => <option key={h.id} value={h.id}>{h.name}</option>)}</select></div>
+        <div className="flex items-end gap-2"><Button disabled={pending}>{create.isPending ? 'Creating…' : 'Create vehicle'}</Button></div>
       </form></CardContent>
     </Card>
   </div>;

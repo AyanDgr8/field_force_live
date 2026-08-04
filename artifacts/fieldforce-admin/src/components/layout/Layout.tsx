@@ -97,12 +97,12 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       )}
       {/* Sidebar */}
       <aside className={cn(
-        "absolute inset-y-0 left-0 w-64 shrink-0 bg-sidebar border-r border-sidebar-border flex flex-col shadow-2xl shadow-slate-950/15 z-20 transition-transform duration-200 md:relative",
+        "absolute inset-y-0 left-0 w-64 shrink-0 bg-sidebar bg-[radial-gradient(circle_at_20%_0%,rgba(99,102,241,.20),transparent_34%),linear-gradient(180deg,rgba(255,255,255,.025),transparent_45%)] border-r border-sidebar-border flex flex-col shadow-2xl shadow-indigo-950/20 z-20 transition-transform duration-200 md:relative",
         sidebarOpen ? "translate-x-0" : "-translate-x-full md:hidden",
       )}>
         <div className="h-[72px] flex items-center justify-between gap-2 px-4 border-b border-sidebar-border">
           <div className="flex items-center gap-2">
-            <div className="w-9 h-9 bg-accent rounded-xl flex items-center justify-center shadow-lg shadow-amber-500/20 ring-1 ring-white/15">
+            <div className="w-9 h-9 bg-gradient-to-br from-amber-300 to-orange-500 rounded-xl flex items-center justify-center shadow-lg shadow-amber-500/20 ring-1 ring-white/20">
               <Activity className="w-5 h-5 text-accent-foreground" />
             </div>
             <div>
@@ -132,7 +132,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             className={cn(
               "group flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left text-sm font-medium transition-all duration-150",
               fleetActive
-                ? "border-amber-300/50 bg-sidebar-primary text-sidebar-primary-foreground shadow-lg shadow-black/15"
+                ? "border-indigo-300/40 bg-sidebar-primary text-sidebar-primary-foreground shadow-lg shadow-indigo-950/25"
                 : "border-transparent text-sidebar-foreground/70 hover:border-sidebar-border hover:bg-sidebar-accent hover:text-sidebar-foreground",
             )}
           >
@@ -157,7 +157,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                 className={cn(
                   "group flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left text-sm font-medium transition-all duration-150",
                   adminConfigurationActive
-                    ? "border-amber-300/50 bg-sidebar-primary text-sidebar-primary-foreground shadow-lg shadow-black/15"
+                    ? "border-indigo-300/40 bg-sidebar-primary text-sidebar-primary-foreground shadow-lg shadow-indigo-950/25"
                     : "border-transparent text-sidebar-foreground/70 hover:border-sidebar-border hover:bg-sidebar-accent hover:text-sidebar-foreground",
                 )}
               >
@@ -184,7 +184,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             className={cn(
               "group flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left text-sm font-medium transition-all duration-150",
               mobileAppActive
-                ? "border-amber-300/50 bg-sidebar-primary text-sidebar-primary-foreground shadow-lg shadow-black/15"
+                ? "border-indigo-300/40 bg-sidebar-primary text-sidebar-primary-foreground shadow-lg shadow-indigo-950/25"
                 : "border-transparent text-sidebar-foreground/70 hover:border-sidebar-border hover:bg-sidebar-accent hover:text-sidebar-foreground",
             )}
           >
@@ -206,7 +206,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             className={cn(
               "group flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left text-sm font-medium transition-all duration-150",
               configurationActive
-                ? "border-amber-300/50 bg-sidebar-primary text-sidebar-primary-foreground shadow-lg shadow-black/15"
+                ? "border-indigo-300/40 bg-sidebar-primary text-sidebar-primary-foreground shadow-lg shadow-indigo-950/25"
                 : "border-transparent text-sidebar-foreground/70 hover:border-sidebar-border hover:bg-sidebar-accent hover:text-sidebar-foreground",
             )}
           >
@@ -241,7 +241,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
       {/* Main Content */}
       <main className="flex-1 flex flex-col overflow-hidden relative">
-        <header className="h-[72px] shrink-0 border-b border-border bg-card/85 backdrop-blur-xl flex items-center justify-between px-6 z-10">
+        <header className="h-[72px] shrink-0 border-b border-white/70 bg-white/78 shadow-sm shadow-indigo-950/5 backdrop-blur-2xl flex items-center justify-between px-6 z-10">
           <div className="flex items-center gap-3">
             {!sidebarOpen && (
               <button
@@ -364,7 +364,7 @@ function NavItem({ href, icon, label }: { href: string; icon: React.ReactNode; l
     <Link href={href} className={cn(
       "group flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-150 text-sm font-medium border",
       isActive
-        ? "bg-sidebar-primary text-sidebar-primary-foreground border-amber-300/50 shadow-lg shadow-black/15"
+        ? "bg-sidebar-primary text-sidebar-primary-foreground border-indigo-300/40 shadow-lg shadow-indigo-950/25"
         : "text-sidebar-foreground/70 border-transparent hover:bg-sidebar-accent hover:text-sidebar-foreground hover:border-sidebar-border hover:translate-x-0.5"
     )}>
       {icon}
