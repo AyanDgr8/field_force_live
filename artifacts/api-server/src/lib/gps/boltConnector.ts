@@ -13,7 +13,9 @@ import { GpsConnector, NormalizedPing, ConnectorConfig } from "./connector.js";
 import { logger } from "../logger.js";
 
 const DEFAULT_BASE_URL = "https://pullapi-s2.track360.co.in/api/v1/auth/pull_api";
+const DEFAULT_COMMAND_BASE_URL = "https://prod-s2.track360.net.in/api/v1/auth";
 const TIMEOUT_MS = 10_000;
+const COMMAND_TIMEOUT_MS = 20_000;
 
 // ─── Field parsers ────────────────────────────────────────────────────────────
 
@@ -224,3 +226,65 @@ export const boltConnector: GpsConnector = {
     }
   },
 };
+
+export type BoltEngineCommand = "engineStop" | "engineResume";
+
+/**
+ * Submit a Track360 Owl-mode engine command and wait for its async task.
+ * Track360 sometimes returns HTTP 400 for a completed task while the JSON body
+ * says `state: SUCCESS`, so task state—not HTTP status—is authoritative.
+ */
+export async function sendBoltEngineCommand(
+  config: ConnectorConfig,
+  deviceId: string,
+  type: BoltEngineCommand,
+): Promise<{ taskId: string; state: "SUCCESS"; message: string }> {
+  if (!config.selectedUserId?.trim()) {
+    throw new Error("Track360 selected user ID is not configured for this vendor account");
+  }
+  if (!/^\d+$/.test(deviceId)) throw new Error("Track360 device ID is invalid");
+
+  const base = (config.commandBaseUrl ?? DEFAULT_COMMAND_BASE_URL).replace(/\/$/, "");
+  const selectedUserId = config.selectedUserId.trim();
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), COMMAND_TIMEOUT_MS);
+
+  try {
+    const submit = await fetch(`${base}/set_owl_mode?selectedUserId=${encodeURIComponent(selectedUserId)}`, {
+      method: "POST",
+      signal: controller.signal,
+      headers: { Accept: "application/json", "Content-Type": "application/json" },
+      body: JSON.stringify({ type, device_id: Number(deviceId) }),
+    });
+    const submitted = await submit.json().catch(() => null) as { success?: boolean; task_id?: string; message?: string } | null;
+    if (!submit.ok || !submitted?.success || !submitted.task_id) {
+      throw new Error(submitted?.message || `Track360 command submission failed (HTTP ${submit.status})`);
+    }
+
+    for (let attempt = 0; attempt < 10; attempt++) {
+      if (attempt > 0) await new Promise(resolve => setTimeout(resolve, 1_000));
+      const statusResponse = await fetch(
+        `${base}/get_task_status?task_id=${encodeURIComponent(submitted.task_id)}&selectedUserId=${encodeURIComponent(selectedUserId)}`,
+        { signal: controller.signal, headers: { Accept: "application/json" } },
+      );
+      const status = await statusResponse.json().catch(() => null) as {
+        state?: string;
+        message?: string;
+        data?: { message?: string; status?: string };
+      } | null;
+      if (status?.state === "SUCCESS") {
+        return {
+          taskId: submitted.task_id,
+          state: "SUCCESS",
+          message: status.data?.message || status.message || "Vehicle command completed",
+        };
+      }
+      if (status?.state && !["PENDING", "STARTED", "RETRY"].includes(status.state)) {
+        throw new Error(status.data?.message || status.message || `Track360 task ${status.state}`);
+      }
+    }
+    throw new Error("Track360 command timed out while waiting for device acknowledgement");
+  } finally {
+    clearTimeout(timer);
+  }
+}

@@ -36,7 +36,7 @@ function StatusIndicator({ status }: { status: VendorAccount['status'] }) {
   return <span className="flex items-center gap-1 text-gray-400 text-xs"><Clock className="w-3.5 h-3.5" />Disabled</span>;
 }
 
-const EMPTY_FORM = { vendorKey: 'BOLT', displayName: '', username: '', password: '', baseUrl: '', pollIntervalSeconds: '30', enabled: true };
+const EMPTY_FORM = { vendorKey: 'BOLT', displayName: '', username: '', password: '', baseUrl: '', selectedUserId: '', commandBaseUrl: '', pollIntervalSeconds: '30', enabled: true };
 
 const MIN_POLL_SECONDS = 3;
 const MAX_POLL_SECONDS = 300;
@@ -92,6 +92,8 @@ export default function VendorAccounts() {
           password: form.password,
           // Omitted unless set — the connector then uses its own default host.
           ...(form.baseUrl.trim() ? { baseUrl: form.baseUrl.trim() } : {}),
+          ...(form.selectedUserId.trim() ? { selectedUserId: form.selectedUserId.trim() } : {}),
+          ...(form.commandBaseUrl.trim() ? { commandBaseUrl: form.commandBaseUrl.trim() } : {}),
         },
         pollIntervalSeconds: parseInt(form.pollIntervalSeconds),
         enabled: form.enabled,
@@ -121,6 +123,8 @@ export default function VendorAccounts() {
                 username: form.username,
                 password: form.password,
                 ...(form.baseUrl.trim() ? { baseUrl: form.baseUrl.trim() } : {}),
+                ...(form.selectedUserId.trim() ? { selectedUserId: form.selectedUserId.trim() } : {}),
+                ...(form.commandBaseUrl.trim() ? { commandBaseUrl: form.commandBaseUrl.trim() } : {}),
               },
             }
           : {}),
@@ -327,6 +331,17 @@ export default function VendorAccounts() {
                     Leave blank for the default host. Set this only if your tracking account lives on a different track360 server.
                     {isEdit && ' It is stored with the credentials, so re-enter the username and password to change it.'}
                   </p>
+                </div>
+                <div>
+                  <Label>Track360 User ID <span className="text-muted-foreground font-normal">(required for vehicle controls)</span></Label>
+                  <Input inputMode="numeric" value={form.selectedUserId} onChange={e => setForm(f => ({ ...f, selectedUserId: e.target.value.replace(/\D/g, '') }))}
+                    placeholder={isEdit ? 'Re-enter credentials to configure' : 'e.g. 241412'} autoComplete="off" />
+                </div>
+                <div>
+                  <Label>Command API URL <span className="text-muted-foreground font-normal">(optional)</span></Label>
+                  <Input value={form.commandBaseUrl} onChange={e => setForm(f => ({ ...f, commandBaseUrl: e.target.value }))}
+                    placeholder="https://prod-s2.track360.net.in/api/v1/auth" autoComplete="off" />
+                  <p className="text-xs text-muted-foreground mt-1">Leave blank for the default Track360 command host.</p>
                 </div>
               </>
             )}

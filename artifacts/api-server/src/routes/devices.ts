@@ -16,6 +16,8 @@ import {
 } from "@workspace/db";
 import { requireAuth } from "../middlewares/auth.js";
 import { z } from "zod";
+import { decrypt } from "../lib/crypto.js";
+import { sendBoltEngineCommand } from "../lib/gps/boltConnector.js";
 
 const router: IRouter = Router();
 
@@ -78,6 +80,49 @@ router.get("/devices/:id", requireAuth, async (req, res): Promise<void> => {
 
   if (!row) { res.status(404).json({ error: "Device not found" }); return; }
   res.json({ ...row.device, category: row.category, assignedUser: row.user?.id ? row.user : null });
+});
+
+// ── Remote engine control ────────────────────────────────────────────────────
+router.post("/devices/:id/engine-command", requireAuth, async (req, res): Promise<void> => {
+  const customerId = await getCustomerId(req.adminUserId!);
+  if (!customerId) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+  const id = parseInt(String(req.params.id));
+  const parsed = z.object({ command: z.enum(["engineStop", "engineResume"]) }).safeParse(req.body);
+  if (!Number.isInteger(id) || !parsed.success) {
+    res.status(400).json({ error: parsed.success ? "Invalid device ID" : "Invalid engine command" });
+    return;
+  }
+
+  const [row] = await db.select({ device: trackedDevicesTable, account: vendorAccountsTable })
+    .from(trackedDevicesTable)
+    .innerJoin(vendorAccountsTable, eq(trackedDevicesTable.vendorAccountId, vendorAccountsTable.id))
+    .where(and(eq(trackedDevicesTable.id, id), eq(trackedDevicesTable.customerId, customerId)))
+    .limit(1);
+  if (!row) { res.status(404).json({ error: "Tracked device not found" }); return; }
+  if (row.device.vendorKey !== "BOLT") {
+    res.status(400).json({ error: `${row.device.vendorKey} does not support remote engine control` });
+    return;
+  }
+  if (!row.account.enabled) { res.status(409).json({ error: "GPS vendor account is disabled" }); return; }
+
+  // Never issue an immobilize command unless the latest telemetry confirms the
+  // vehicle is online, stationary, and recently heard from.
+  if (parsed.data.command === "engineStop") {
+    const fixAge = row.device.lastFixAt ? Date.now() - row.device.lastFixAt.getTime() : Infinity;
+    if (row.device.status !== "ONLINE") { res.status(409).json({ error: "Engine stop is blocked while the tracker is offline" }); return; }
+    if (fixAge > 10 * 60 * 1000) { res.status(409).json({ error: "Engine stop is blocked because the GPS fix is stale" }); return; }
+    if ((row.device.lastSpeedKph ?? 0) > 3) { res.status(409).json({ error: "Engine stop is blocked while the vehicle is moving" }); return; }
+  }
+
+  try {
+    const config = JSON.parse(decrypt(row.account.credentialsEnc));
+    const result = await sendBoltEngineCommand(config, row.device.vendorDeviceId, parsed.data.command);
+    res.json({ ...result, command: parsed.data.command, deviceId: row.device.id });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Vehicle command failed";
+    res.status(502).json({ error: message });
+  }
 });
 
 // ── Ping history ──────────────────────────────────────────────────────────────

@@ -68,7 +68,7 @@ router.get("/vendor-accounts", requireAuth, async (req, res): Promise<void> => {
 const CreateBody = z.object({
   vendorKey: z.enum(["BOLT", "MOCK_BOLT"]),
   displayName: z.string().min(1),
-  credentials: z.object({ username: z.string(), password: z.string(), apiKey: z.string().optional(), baseUrl: z.string().optional() }),
+  credentials: z.object({ username: z.string(), password: z.string(), apiKey: z.string().optional(), baseUrl: z.string().optional(), selectedUserId: z.string().regex(/^\d+$/).optional(), commandBaseUrl: z.string().url().optional() }),
   pollIntervalSeconds: z.number().int().min(3).max(300).default(30),
   enabled: z.boolean().default(true),
 });
@@ -99,7 +99,7 @@ router.post("/vendor-accounts", requireAuth, async (req, res): Promise<void> => 
 // ── Update ────────────────────────────────────────────────────────────────────
 const UpdateBody = z.object({
   displayName: z.string().min(1).optional(),
-  credentials: z.object({ username: z.string(), password: z.string(), apiKey: z.string().optional(), baseUrl: z.string().optional() }).optional(),
+  credentials: z.object({ username: z.string(), password: z.string(), apiKey: z.string().optional(), baseUrl: z.string().optional(), selectedUserId: z.string().regex(/^\d+$/).optional(), commandBaseUrl: z.string().url().optional() }).optional(),
   pollIntervalSeconds: z.number().int().min(3).max(300).optional(),
   enabled: z.boolean().optional(),
 });

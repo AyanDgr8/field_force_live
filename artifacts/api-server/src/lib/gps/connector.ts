@@ -11,6 +11,10 @@ export interface ConnectorConfig {
   password: string;
   apiKey?: string;
   baseUrl?: string;
+  /** Track360 web API user id, required only for remote vehicle commands. */
+  selectedUserId?: string;
+  /** Optional Track360 web API origin; pull-api baseUrl remains separate. */
+  commandBaseUrl?: string;
 }
 
 /**

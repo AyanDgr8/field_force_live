@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Bike, Pencil, Plus, X, Wifi, WifiOff, Search, Radio } from 'lucide-react';
+import { Bike, Pencil, Plus, X, Wifi, WifiOff, Search, Radio, Power, PowerOff, ShieldAlert } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -68,12 +68,16 @@ export default function VehicleConfiguration() {
   const vehicles = data?.vehicles ?? [];
   const trackedCount = vehicles.filter(v => deviceFor(v)).length;
   const q = search.trim().toLowerCase();
-  const visibleVehicles = vehicles.filter(vehicle => {
-    if (onlyTracked && !deviceFor(vehicle)) return false;
-    if (!q) return true;
-    return [vehicle.registrationNumber, vehicle.chassisNumber, vehicle.imei, vehicle.make, vehicle.model, vehicle.iotVendor]
-      .some(field => (field ?? '').toLowerCase().includes(q));
-  });
+  const visibleVehicles = vehicles
+    .filter(vehicle => {
+      if (onlyTracked && !deviceFor(vehicle)) return false;
+      if (!q) return true;
+      return [vehicle.registrationNumber, vehicle.chassisNumber, vehicle.imei, vehicle.make, vehicle.model, vehicle.iotVendor]
+        .some(field => (field ?? '').toLowerCase().includes(q));
+    })
+    .sort((a, b) =>
+      Number(deviceFor(b)?.status === 'ONLINE') - Number(deviceFor(a)?.status === 'ONLINE'),
+    );
   const finish = (title: string) => { qc.invalidateQueries({ queryKey: ['organization-bootstrap'] }); setEditing(null); toast({ title }); };
   const create = useMutation({
     mutationFn: (body: unknown) => api('/api/organization/vehicles', { method: 'POST', body: JSON.stringify(body) }),
@@ -84,6 +88,18 @@ export default function VehicleConfiguration() {
     mutationFn: ({ id, body }: { id: number; body: unknown }) => api(`/api/organization/vehicles/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
     onSuccess: () => finish('Vehicle updated'),
     onError: (e: Error) => toast({ title: 'Vehicle update failed', description: e.message, variant: 'destructive' }),
+  });
+  const engineCommand = useMutation({
+    mutationFn: ({ deviceId, command }: { deviceId: number; command: 'engineStop' | 'engineResume' }) =>
+      api(`/api/devices/${deviceId}/engine-command`, { method: 'POST', body: JSON.stringify({ command }) }),
+    onSuccess: (result, variables) => {
+      toast({
+        title: variables.command === 'engineStop' ? 'Engine stop confirmed' : 'Engine resume confirmed',
+        description: result.message,
+      });
+      qc.invalidateQueries({ queryKey: ['devices'] });
+    },
+    onError: (error: Error) => toast({ title: 'Vehicle command failed', description: error.message, variant: 'destructive' }),
   });
   const submit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault(); const form = new FormData(event.currentTarget);
@@ -131,7 +147,13 @@ export default function VehicleConfiguration() {
         )}
         {visibleVehicles.map(vehicle => {
           const device = deviceFor(vehicle);
-          return <div key={vehicle.id} className="border rounded-lg p-4 flex flex-col">
+          const isLive = device?.status === 'ONLINE';
+          return <div
+            key={vehicle.id}
+            className={isLive
+              ? "flex flex-col rounded-lg border-2 border-emerald-400 bg-emerald-50/80 p-4 shadow-sm shadow-emerald-500/10"
+              : "flex flex-col rounded-lg border p-4"}
+          >
             <div className="flex justify-between gap-2">
               <span className="font-semibold truncate">{vehicle.registrationNumber}</span>
               <Badge variant="outline" className="shrink-0">{vehicle.status}</Badge>
@@ -153,7 +175,9 @@ export default function VehicleConfiguration() {
               </div>
             )}
             {device ? (
-              <div className="mt-2 rounded-md bg-muted/50 px-2 py-1.5 text-xs space-y-0.5">
+              <div className={isLive
+                ? "mt-2 space-y-0.5 rounded-md border border-emerald-200 bg-emerald-100/70 px-2 py-1.5 text-xs"
+                : "mt-2 space-y-0.5 rounded-md bg-muted/50 px-2 py-1.5 text-xs"}>
                 <div className="flex items-center gap-1.5 font-medium">
                   {device.status === 'ONLINE'
                     ? <><Wifi className="w-3 h-3 text-green-600"/><span className="text-green-700">Live</span></>
@@ -172,6 +196,52 @@ export default function VehicleConfiguration() {
             )}
             {vehicle.hubId == null && (
               <div className="mt-2 text-[11px] text-amber-700">Assign a hub so hub and state admins can see this vehicle.</div>
+            )}
+            {device && (
+              <details className="mt-3 rounded-lg border bg-background">
+                <summary className="cursor-pointer select-none px-3 py-2 text-xs font-semibold">Vehicle Controls</summary>
+                <div className="space-y-2 border-t p-3">
+                  <div className="flex items-start gap-2 text-[11px] text-muted-foreground">
+                    <ShieldAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                    Commands are sent through Track360 and wait for device acknowledgement.
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-8 gap-1.5 text-xs text-emerald-700"
+                      disabled={engineCommand.isPending && engineCommand.variables?.deviceId === device.id}
+                      onClick={() => engineCommand.mutate({ deviceId: device.id, command: 'engineResume' })}
+                    >
+                      <Power className="h-3.5 w-3.5" /> Engine On
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="destructive"
+                      className="h-8 gap-1.5 text-xs"
+                      disabled={
+                        (engineCommand.isPending && engineCommand.variables?.deviceId === device.id) ||
+                        device.status !== 'ONLINE' ||
+                        (device.lastSpeedKph ?? 0) > 3 ||
+                        !device.lastFixAt ||
+                        Date.now() - new Date(device.lastFixAt).getTime() > 10 * 60 * 1000
+                      }
+                      onClick={() => {
+                        if (confirm(`Stop the engine for ${vehicle.registrationNumber}? Only continue after confirming the vehicle is safely parked.`)) {
+                          engineCommand.mutate({ deviceId: device.id, command: 'engineStop' });
+                        }
+                      }}
+                    >
+                      <PowerOff className="h-3.5 w-3.5" /> Engine Off
+                    </Button>
+                  </div>
+                  {(device.status !== 'ONLINE' || (device.lastSpeedKph ?? 0) > 3 || !device.lastFixAt || Date.now() - new Date(device.lastFixAt).getTime() > 10 * 60 * 1000) && (
+                    <p className="text-[11px] text-amber-700">Engine Off is available only when the tracker is online, recently updated, and stationary.</p>
+                  )}
+                </div>
+              </details>
             )}
             <Button type="button" variant="outline" size="sm" className="mt-3 self-start" onClick={() => { setEditing(vehicle); requestAnimationFrame(() => document.getElementById('vehicle-form')?.scrollIntoView({ behavior: 'smooth', block: 'start' })); }}>
               <Pencil className="w-3.5 h-3.5 mr-2"/>Edit vehicle
