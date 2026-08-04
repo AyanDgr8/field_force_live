@@ -58,7 +58,7 @@ export default function Dashboard() {
 
   const [search, setSearch] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [activeCategory, setActiveCategory] = useState<CategoryFilter>('ALL');
+  const [activeCategory, setActiveCategory] = useState<CategoryFilter>('VEHICLES');
   const [listSource, setListSource] = useState<ListSource>('VEHICLE');
   const showingMobile = listSource === 'MOBILE';
 
@@ -217,7 +217,7 @@ export default function Dashboard() {
                     <div
                       key={key}
                       onClick={() => {
-                        setActiveCategory('ALL');
+                        setActiveCategory('MOBILE_APP');
                         setSelectedId(selectedId === key ? null : key);
                       }}
                       className={cn(
@@ -262,7 +262,7 @@ export default function Dashboard() {
                     <div
                       key={key}
                       onClick={() => {
-                        setActiveCategory('ALL');
+                        setActiveCategory('VEHICLES');
                         setSelectedId(selectedId === key ? null : key);
                       }}
                       className={cn(

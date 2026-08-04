@@ -290,7 +290,7 @@ function Legend({ categories }: { categories: { key: string; label: string; colo
 }
 
 // ─── Category filter tabs ─────────────────────────────────────────────────────
-export type CategoryFilter = 'ALL' | string;
+export type CategoryFilter = 'ALL' | 'VEHICLES' | string;
 
 export function CategoryTabs({
   categories,
@@ -306,10 +306,13 @@ export function CategoryTabs({
   const count = (key: string) =>
     key === 'ALL'
       ? positions.length
+      : key === 'VEHICLES'
+        ? positions.filter(p => p.sourceType === 'GPS_DEVICE').length
       : positions.filter(p => (p.deviceCategoryKey ?? (p.sourceType === 'MOBILE_APP' ? 'MOBILE_APP' : 'VEHICLE_TRACKER')) === key).length;
 
   const tabs: { key: CategoryFilter; label: string; color: string }[] = [
     { key: 'ALL', label: 'All Sources', color: '#6b7280' },
+    { key: 'VEHICLES', label: 'Vehicles', color: '#f97316' },
     ...categories.map(c => ({ key: c.key, label: c.label, color: c.colorHex })),
   ];
 
@@ -368,13 +371,14 @@ export function LiveMap({ positions, onPositionClick, onMapClick, selectedPositi
 
   const filtered = positions.filter(p => {
     if (activeCategory === 'ALL') return true;
+    if (activeCategory === 'VEHICLES') return p.sourceType === 'GPS_DEVICE';
     const key = p.deviceCategoryKey ?? (p.sourceType === 'MOBILE_APP' ? 'MOBILE_APP' : 'VEHICLE_TRACKER');
     return key === activeCategory;
   });
 
-  // Auto-fit on first load, preserve zoom/center on tab switch
+  // Fit the currently selected source, including the default Vehicles view.
   useEffect(() => {
-    if (!mapRef.current || !isLoaded || activeCategory !== 'ALL') return;
+    if (!mapRef.current || !isLoaded) return;
     const valid = filtered.filter(p => p.latitude != null && p.longitude != null);
     if (valid.length === 0) return;
     if (valid.length === 1) { mapRef.current.panTo({ lat: valid[0].latitude, lng: valid[0].longitude }); mapRef.current.setZoom(14); return; }
