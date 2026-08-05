@@ -60,6 +60,7 @@ export default function Dashboard() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [activeCategory, setActiveCategory] = useState<CategoryFilter>('VEHICLES');
   const [listSource, setListSource] = useState<ListSource>('VEHICLE');
+  const [alarmsOnly, setAlarmsOnly] = useState(false);
   const showingMobile = listSource === 'MOBILE';
 
   const mobilePositions = positionList.filter(p => p.sourceType === 'MOBILE_APP');
@@ -89,6 +90,7 @@ export default function Dashboard() {
   const q = search.toLowerCase();
 
   const filteredMobile = mobilePositions
+    .filter(p => !alarmsOnly || p.emergencyActive)
     .filter(p =>
       (p.firstName ?? '').toLowerCase().includes(q) ||
       (p.lastName ?? '').toLowerCase().includes(q) ||
@@ -98,14 +100,19 @@ export default function Dashboard() {
     .sort((a, b) => Number(Boolean(b.emergencyActive)) - Number(Boolean(a.emergencyActive)));
 
   const filteredDevices = devicePositions
+    .filter(p => !alarmsOnly || Boolean(p.alarm))
     .filter(p =>
       (p.deviceName ?? '').toLowerCase().includes(q) ||
       (p.imei ?? '').toLowerCase().includes(q) ||
       (p.vendorType ?? '').toLowerCase().includes(q) ||
       (p.assignedUserName ?? '').toLowerCase().includes(q)
     )
-    // Alarmed vehicles stay pinned above every normal vehicle.
-    .sort((a, b) => Number(Boolean(b.alarm)) - Number(Boolean(a.alarm)));
+    // Running vehicles stay at the top. Within each ignition group, keep
+    // alarmed vehicles ahead of normal vehicles so urgent signals remain clear.
+    .sort((a, b) =>
+      Number(b.ignition === true) - Number(a.ignition === true) ||
+      Number(Boolean(b.alarm)) - Number(Boolean(a.alarm))
+    );
 
   return (
     <div className="h-full flex flex-col gap-6">
@@ -141,6 +148,23 @@ export default function Dashboard() {
           value={alarmCount}
           icon={<AlertCircle className="w-4 h-4 text-destructive" />}
           className={alarmCount > 0 ? "border-destructive/50 bg-destructive/5" : ""}
+          onClick={alarmCount > 0 ? () => {
+            setSearch('');
+            setAlarmsOnly(true);
+            const alarmedVehicle = devicePositions.find(pos => Boolean(pos.alarm));
+            if (alarmedVehicle) {
+              setListSource('VEHICLE');
+              setActiveCategory('VEHICLES');
+              setSelectedId(`d-${alarmedVehicle.deviceId}`);
+              return;
+            }
+            const emergencyAgent = mobilePositions.find(pos => pos.emergencyActive);
+            if (emergencyAgent) {
+              setListSource('MOBILE');
+              setActiveCategory('MOBILE_APP');
+              setSelectedId(`u-${emergencyAgent.userId}`);
+            }
+          } : undefined}
         />
       </div>
 
@@ -150,7 +174,7 @@ export default function Dashboard() {
           categories={categoryList}
           positions={positionList}
           active={activeCategory}
-          onChange={setActiveCategory}
+          onChange={key => { setActiveCategory(key); setAlarmsOnly(false); }}
         />
       </div>
 
@@ -177,7 +201,7 @@ export default function Dashboard() {
               <div className="flex items-center justify-between gap-2">
                 <Select
                   value={listSource}
-                  onValueChange={v => { setListSource(v as ListSource); setSearch(''); }}
+                  onValueChange={v => { setListSource(v as ListSource); setSearch(''); setAlarmsOnly(false); }}
                 >
                   <SelectTrigger className="h-8 w-[190px] text-sm font-semibold">
                     {showingMobile
@@ -204,7 +228,7 @@ export default function Dashboard() {
               <Input
                 placeholder={showingMobile ? 'Search agent or code...' : 'Search vehicle, IMEI, rider...'}
                 value={search}
-                onChange={e => setSearch(e.target.value)}
+                onChange={e => { setSearch(e.target.value); setAlarmsOnly(false); }}
                 className="h-8 text-sm"
               />
             </div>
@@ -321,9 +345,15 @@ export default function Dashboard() {
   );
 }
 
-function StatCard({ title, value, icon, detail, className }: { title: string; value: number; icon: React.ReactNode; detail?: string; className?: string }) {
+function StatCard({ title, value, icon, detail, className, onClick }: { title: string; value: number; icon: React.ReactNode; detail?: string; className?: string; onClick?: () => void }) {
   return (
-    <Card className={cn("shadow-sm", className)}>
+    <Card
+      className={cn("shadow-sm", onClick && "cursor-pointer transition hover:-translate-y-0.5 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", className)}
+      onClick={onClick}
+      onKeyDown={onClick ? event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onClick(); } } : undefined}
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+    >
       <CardContent className="p-4 flex items-center justify-between">
         <div className="min-w-0">
           <p className="text-xs font-medium text-muted-foreground mb-1">{title}</p>

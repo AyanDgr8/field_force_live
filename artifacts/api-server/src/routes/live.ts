@@ -10,6 +10,8 @@ import {
   dayPlansTable,
   trackedDevicesTable,
   deviceCategoriesTable,
+  vehiclesTable,
+  hubsTable,
 } from "@workspace/db";
 import {
   GetLiveSummaryResponse,
@@ -187,9 +189,19 @@ router.get("/live/all-positions", requireAuth, async (req, res): Promise<void> =
   }
 
   const devices = await db
-    .select({ device: trackedDevicesTable, category: deviceCategoriesTable })
+    .select({
+      device: trackedDevicesTable,
+      category: deviceCategoriesTable,
+      vehicle: vehiclesTable,
+      hubName: hubsTable.name,
+    })
     .from(trackedDevicesTable)
     .leftJoin(deviceCategoriesTable, eq(trackedDevicesTable.deviceCategoryId, deviceCategoriesTable.id))
+    .leftJoin(vehiclesTable, and(
+      eq(vehiclesTable.customerId, trackedDevicesTable.customerId),
+      eq(vehiclesTable.registrationNumber, trackedDevicesTable.assignedVehicleReg),
+    ))
+    .leftJoin(hubsTable, eq(vehiclesTable.hubId, hubsTable.id))
     .where(and(
       eq(trackedDevicesTable.customerId, customerId),
       sql`${trackedDevicesTable.lastLat} IS NOT NULL`,
@@ -206,7 +218,7 @@ router.get("/live/all-positions", requireAuth, async (req, res): Promise<void> =
     .where(inArray(usersTable.id, assignedIds));
   const assignedMap = new Map(assignedUsers.map(user => [user.id, user]));
 
-  for (const { device, category } of devices) {
+  for (const { device, category, vehicle, hubName } of devices) {
     if (device.lastLat == null || device.lastLng == null || !device.lastFixAt) continue;
     const assignedUser = device.assignedUserId == null ? undefined : assignedMap.get(device.assignedUserId);
     result.push({
@@ -230,6 +242,18 @@ router.get("/live/all-positions", requireAuth, async (req, res): Promise<void> =
       alarm: device.lastAlarm ?? null,
       assignedUserId: device.assignedUserId ?? null,
       assignedUserName: assignedUser ? `${assignedUser.firstName} ${assignedUser.lastName}` : null,
+      vehicleId: vehicle?.id ?? null,
+      registrationNumber: vehicle?.registrationNumber ?? device.assignedVehicleReg ?? null,
+      vehicleType: vehicle?.vehicleType ?? null,
+      vehicleMake: vehicle?.make ?? null,
+      vehicleModel: vehicle?.model ?? null,
+      vehicleColor: vehicle?.color ?? null,
+      chassisNumber: vehicle?.chassisNumber ?? null,
+      engineNumber: vehicle?.engineNumber ?? null,
+      vehicleStatus: vehicle?.status ?? null,
+      vehicleActive: vehicle?.active ?? null,
+      hubId: vehicle?.hubId ?? null,
+      hubName: hubName ?? null,
     });
   }
 

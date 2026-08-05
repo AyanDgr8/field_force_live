@@ -1,12 +1,14 @@
 import { useEffect, useRef, useCallback, useMemo, useState } from 'react';
 import { GoogleMap, OverlayView } from '@react-google-maps/api';
-import { Bike } from 'lucide-react';
+import { Power, PowerOff, ShieldAlert, X } from 'lucide-react';
+import { FaMotorcycle } from 'react-icons/fa6';
 import { GOOGLE_MAPS_API_KEY, useGoogleMaps } from '@/lib/google-maps';
 import { MapTypeToggle, type MapView } from '@/components/ui/map-type-toggle';
 import { cn } from '@/lib/utils';
 
 const MAP_CONTAINER_STYLE = { width: '100%', height: '100%' };
 const DEFAULT_CENTER = { lat: 28.6139, lng: 77.2090 };
+const BASE = import.meta.env.BASE_URL.replace(/\/$/, '');
 
 // ─── Unified position — covers both MOBILE_APP and GPS_DEVICE ─────────────────
 export interface UnifiedPosition {
@@ -41,6 +43,18 @@ export interface UnifiedPosition {
   courseDeg?: number | null;
   assignedUserId?: number | null;
   assignedUserName?: string | null;
+  vehicleId?: number | null;
+  registrationNumber?: string | null;
+  vehicleType?: string | null;
+  vehicleMake?: string | null;
+  vehicleModel?: string | null;
+  vehicleColor?: string | null;
+  chassisNumber?: string | null;
+  engineNumber?: string | null;
+  vehicleStatus?: string | null;
+  vehicleActive?: boolean | null;
+  hubId?: number | null;
+  hubName?: string | null;
 }
 
 // ─── Category definitions (colors + shape names) ──────────────────────────────
@@ -109,23 +123,24 @@ function VehiclePin({ color, courseDeg, ignition, alarm, stale }: { color: strin
  */
 function BikePin({ color, courseDeg, ignition, alarm, stale }: { color: string; courseDeg?: number | null; ignition?: boolean | null; alarm?: string | null; stale?: boolean }) {
   const fill = stale ? '#94a3b8' : color;
-  const off = ignition === false;
   return (
-    <div className="relative w-8 h-8" style={{ transform: 'translate(-50%, -50%)' }}>
+    <div className="relative h-10 w-10" style={{ transform: 'translate(-50%, -50%)' }}>
       {courseDeg != null && (
-        <div className="absolute inset-0 flex justify-center" style={{ transform: `rotate(${courseDeg}deg)` }}>
-          <svg width="10" height="8" viewBox="0 0 10 8" style={{ marginTop: -10 }}>
-            <polygon points="5,0 10,8 0,8" fill={fill} stroke="white" strokeWidth="1.5" strokeLinejoin="round" />
+        <div className="absolute inset-[-5px] flex justify-center transition-transform duration-700 ease-out" style={{ transform: `rotate(${courseDeg}deg)` }}>
+          <svg width="11" height="9" viewBox="0 0 11 9" className="-mt-1 drop-shadow-sm" aria-hidden="true">
+            <path d="M5.5 0 11 9 5.5 7 0 9Z" fill={fill} stroke="white" strokeWidth="1.25" strokeLinejoin="round" />
           </svg>
         </div>
       )}
-      <div
-        className="w-8 h-8 rounded-full border-2 flex items-center justify-center shadow-lg"
-        style={{ backgroundColor: off ? 'white' : fill, borderColor: off ? fill : 'white' }}
-      >
-        <Bike className="w-[18px] h-[18px]" strokeWidth={2.25} style={{ color: off ? fill : 'white' }} />
+      <div className="relative flex h-10 w-10 items-center justify-center transition-colors duration-300">
+        <FaMotorcycle
+          className="h-8 w-8 drop-shadow-[0_2px_2px_rgba(255,255,255,0.95)]"
+          style={{ color: ignition === false ? '#64748b' : fill, filter: 'drop-shadow(0 2px 3px rgba(15,23,42,0.45))' }}
+          aria-hidden="true"
+        />
       </div>
-      {alarm && <span className="absolute -top-0.5 -right-0.5 w-3 h-3 bg-red-500 rounded-full border border-white z-10" />}
+      {ignition === true && !stale && <span className="absolute bottom-0.5 left-0.5 h-2.5 w-2.5 rounded-full border-2 border-white bg-emerald-500" />}
+      {alarm && <span className="absolute -right-0.5 -top-0.5 z-10 h-3.5 w-3.5 rounded-full border-2 border-white bg-red-500" />}
     </div>
   );
 }
@@ -233,23 +248,40 @@ function MarkerWithTooltip({ pos, onClick, selected = false }: { pos: UnifiedPos
         : pos.liveStatus === 'OFFLINE'
           ? 'Offline'
           : pos.liveStatus;
-
+  // GPS pins are centred on the map coordinate; mobile pins place their tip on
+  // it, so their visual centre sits above the coordinate.
+  const selectionTop = pos.sourceType === 'MOBILE_APP' ? -23 : 0;
+  const selectionColor = getCategoryColor(pos);
   return (
     <div
-      className={cn('relative cursor-pointer group transition-transform duration-300', selected && 'z-50 scale-125')}
+      className={cn('relative cursor-pointer group', selected && 'z-50')}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
       onClick={onClick}
     >
       {selected && (
         <>
-          <span className="absolute left-1/2 top-1/2 w-14 h-14 -translate-x-1/2 -translate-y-1/2 rounded-full bg-violet-500/40 animate-ping pointer-events-none" />
-          <span className="absolute left-1/2 top-1/2 w-11 h-11 -translate-x-1/2 -translate-y-1/2 rounded-full border-4 border-fuchsia-300 shadow-[0_0_22px_rgba(192,132,252,0.95)] pointer-events-none" />
+          <span
+            className="pointer-events-none absolute z-0 h-11 w-11 -translate-x-1/2 -translate-y-1/2 rounded-full animate-pulse"
+            style={{ left: 0, top: selectionTop, backgroundColor: `${selectionColor}33` }}
+          />
+          <span
+            className="pointer-events-none absolute z-0 h-10 w-10 -translate-x-1/2 -translate-y-1/2 rounded-full border-2"
+            style={{
+              left: 0,
+              top: selectionTop,
+              borderColor: selectionColor,
+              backgroundColor: `${selectionColor}1f`,
+              boxShadow: `0 0 10px ${selectionColor}bf`,
+            }}
+          />
         </>
       )}
-      <MarkerPin pos={pos} />
-      {(hover || selected) && (
-        <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 z-50 bg-popover border rounded-md px-2.5 py-2 text-xs shadow-xl whitespace-nowrap pointer-events-none min-w-40">
+      <div className="relative z-10 transition-transform duration-200" style={{ transform: selected ? 'scale(1.08)' : undefined }}>
+        <MarkerPin pos={pos} />
+      </div>
+      {hover && !selected && (
+        <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 z-50 bg-popover border text-xs shadow-xl pointer-events-none min-w-40 whitespace-nowrap rounded-md px-2.5 py-2">
           <div className="font-semibold">{label}</div>
           {pos.alarm && <div className="text-red-500 font-medium">⚠ {pos.alarm}</div>}
           {pos.sourceType === 'GPS_DEVICE' && pos.ignition != null && (
@@ -262,6 +294,102 @@ function MarkerWithTooltip({ pos, onClick, selected = false }: { pos: UnifiedPos
         </div>
       )}
     </div>
+  );
+}
+
+function VehicleDetailOverlay({ pos, onClose }: { pos: UnifiedPosition; onClose: () => void }) {
+  const [commandPending, setCommandPending] = useState<'engineStop' | 'engineResume' | null>(null);
+  const [commandResult, setCommandResult] = useState<{ ok: boolean; message: string } | null>(null);
+  const ageMs = Date.now() - new Date(pos.recordedAt).getTime();
+  const fixAgo = ageMs < 60_000 ? `${Math.round(ageMs / 1000)}s ago`
+    : ageMs < 3_600_000 ? `${Math.round(ageMs / 60_000)}m ago`
+    : `${Math.round(ageMs / 3_600_000)}h ago`;
+  const title = pos.registrationNumber ?? pos.deviceName ?? pos.imei ?? `Device #${pos.deviceId}`;
+  const model = [pos.vehicleMake, pos.vehicleModel].filter(Boolean).join(' ');
+  const registrationIsChassis = Boolean(pos.chassisNumber && pos.registrationNumber === pos.chassisNumber);
+  const canStopEngine = ageMs <= 10 * 60_000 && (pos.speedKph ?? 0) <= 3;
+  const sendEngineCommand = async (command: 'engineStop' | 'engineResume') => {
+    if (pos.deviceId == null || commandPending) return;
+    if (command === 'engineStop' && !window.confirm(`Stop the engine for ${title}? Only continue after confirming the vehicle is safely parked.`)) return;
+    setCommandPending(command);
+    setCommandResult(null);
+    try {
+      const response = await fetch(`${BASE}/api/devices/${pos.deviceId}/engine-command`, {
+        method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ command }),
+      });
+      const result = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(result?.error ?? `Command failed (HTTP ${response.status})`);
+      setCommandResult({ ok: true, message: result?.message ?? (command === 'engineStop' ? 'Engine stop confirmed' : 'Engine resume confirmed') });
+    } catch (error) {
+      setCommandResult({ ok: false, message: error instanceof Error ? error.message : 'Vehicle command failed' });
+    } finally {
+      setCommandPending(null);
+    }
+  };
+
+  return (
+    <aside
+      className="absolute inset-x-2 bottom-2 z-20 max-h-[min(70%,30rem)] overflow-y-auto rounded-xl border bg-popover/95 p-3 text-xs shadow-2xl backdrop-blur-md sm:inset-x-auto sm:bottom-auto sm:right-3 sm:top-3 sm:w-[min(21rem,calc(100%-1.5rem))] sm:max-h-[calc(100%-1.5rem)] sm:p-4"
+      onClick={event => event.stopPropagation()}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="font-semibold font-mono break-all">{title}</div>
+          <div className="mt-0.5 text-muted-foreground">{model || '—'} · {pos.vehicleType ?? pos.vendorType ?? 'TWO_WHEELER'}</div>
+        </div>
+        <div className="flex shrink-0 items-center gap-1.5">
+          {pos.vehicleStatus && <span className="rounded-full border px-2 py-0.5 text-[10px] font-semibold">{pos.vehicleStatus}</span>}
+          <button type="button" aria-label="Close vehicle details" onClick={onClose} className="rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+      <dl className="mt-3 grid grid-cols-[72px_minmax(0,1fr)] gap-x-2 gap-y-1 border-t pt-2.5">
+        <dt className="text-muted-foreground">Registration</dt><dd className="font-mono break-all">{pos.registrationNumber ?? '—'}</dd>
+        <dt className="text-muted-foreground">Chassis</dt><dd className="font-mono break-all">{pos.chassisNumber ?? '—'}</dd>
+        <dt className="text-muted-foreground">IMEI</dt><dd className="font-mono break-all">{pos.imei ?? '—'}</dd>
+        {pos.engineNumber && <><dt className="text-muted-foreground">Engine</dt><dd className="font-mono break-all">{pos.engineNumber}</dd></>}
+        {pos.vehicleColor && <><dt className="text-muted-foreground">Color</dt><dd>{pos.vehicleColor}</dd></>}
+        <dt className="text-muted-foreground">Rider</dt><dd className="break-words">{pos.assignedUserName ?? 'Unassigned'}</dd>
+        <dt className="text-muted-foreground">Hub</dt><dd className="break-words">{pos.hubName ?? 'Unassigned'}</dd>
+      </dl>
+      {registrationIsChassis && <div className="mt-2 rounded-md bg-amber-50 px-2 py-1.5 text-[11px] text-amber-700">Showing the chassis number — the tracker does not report a number plate. Edit the vehicle to add the real registration.</div>}
+      <div className="mt-2.5 rounded-md bg-muted/60 px-2.5 py-2">
+        <div className="flex items-center justify-between gap-2 font-medium">
+          <span className={ageMs <= 10 * 60_000 ? 'text-emerald-700' : 'text-slate-500'}>{ageMs <= 10 * 60_000 ? 'Live' : 'Stale'}</span>
+          <span className="font-mono text-muted-foreground">{pos.vendorKey ?? 'GPS'}</span>
+        </div>
+        <div className="mt-0.5 text-muted-foreground">Last fix {fixAgo}{pos.speedKph != null ? ` · ${Math.round(pos.speedKph)} km/h` : ''}{pos.ignition != null ? ` · IGN ${pos.ignition ? 'ON' : 'OFF'}` : ''}</div>
+        {pos.alarm && <div className="mt-1 font-medium text-red-600">⚠ {pos.alarm}</div>}
+      </div>
+      {pos.hubId == null && <div className="mt-2 text-[11px] text-amber-700">Assign a hub so hub and state admins can see this vehicle.</div>}
+      <div className="mt-3 space-y-2 border-t pt-3">
+        <div className="flex items-start gap-2 text-[11px] text-muted-foreground">
+          <ShieldAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <span>Commands are sent through Track360 and wait for device acknowledgement.</span>
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            disabled={commandPending !== null || pos.deviceId == null}
+            onClick={() => sendEngineCommand('engineResume')}
+            className="inline-flex h-9 items-center justify-center gap-1.5 rounded-md border bg-background px-3 font-medium text-emerald-700 shadow-sm hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Power className="h-3.5 w-3.5" /> {commandPending === 'engineResume' ? 'Sending…' : 'Engine On'}
+          </button>
+          <button
+            type="button"
+            disabled={commandPending !== null || pos.deviceId == null || !canStopEngine}
+            onClick={() => sendEngineCommand('engineStop')}
+            className="inline-flex h-9 items-center justify-center gap-1.5 rounded-md bg-destructive px-3 font-medium text-destructive-foreground shadow-sm hover:bg-destructive/90 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <PowerOff className="h-3.5 w-3.5" /> {commandPending === 'engineStop' ? 'Sending…' : 'Engine Off'}
+          </button>
+        </div>
+        {!canStopEngine && <p className="text-[11px] text-amber-700">Engine Off is available only when the tracker is recently updated and stationary.</p>}
+        {commandResult && <p role="status" className={cn('rounded-md px-2 py-1.5 text-[11px]', commandResult.ok ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700')}>{commandResult.message}</p>}
+      </div>
+    </aside>
   );
 }
 
@@ -375,6 +503,11 @@ export function LiveMap({ positions, onPositionClick, onMapClick, selectedPositi
     const key = p.deviceCategoryKey ?? (p.sourceType === 'MOBILE_APP' ? 'MOBILE_APP' : 'VEHICLE_TRACKER');
     return key === activeCategory;
   });
+  const selectedPosition = selectedPositionId
+    ? positions.find(pos => pos.sourceType === 'MOBILE_APP'
+      ? selectedPositionId === `u-${pos.userId}`
+      : selectedPositionId === `d-${pos.deviceId}`)
+    : undefined;
 
   // Fit the currently selected source, including the default Vehicles view.
   useEffect(() => {
@@ -390,11 +523,7 @@ export function LiveMap({ positions, onPositionClick, onMapClick, selectedPositi
   // A list/marker selection always takes visual focus on the map.
   useEffect(() => {
     if (!mapRef.current || !isLoaded || !selectedPositionId) return;
-    const selected = positions.find(pos =>
-      pos.sourceType === 'MOBILE_APP'
-        ? selectedPositionId === `u-${pos.userId}`
-        : selectedPositionId === `d-${pos.deviceId}`,
-    );
+    const selected = selectedPosition;
     if (!selected || selected.latitude == null || selected.longitude == null) return;
     mapRef.current.panTo({ lat: selected.latitude, lng: selected.longitude });
     mapRef.current.setZoom(17);
@@ -458,6 +587,9 @@ export function LiveMap({ positions, onPositionClick, onMapClick, selectedPositi
       </GoogleMap>
       <MapTypeToggle value={mapView} onChange={setMapView} className="absolute top-3 left-3 z-10" />
       <Legend categories={legendCategories} />
+      {selectedPosition?.sourceType === 'GPS_DEVICE' && (
+        <VehicleDetailOverlay key={selectedPosition.deviceId} pos={selectedPosition} onClose={() => onMapClick?.()} />
+      )}
     </div>
   );
 }
