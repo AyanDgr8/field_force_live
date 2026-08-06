@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useLocation, Link } from 'wouter';
 import { useQuery } from '@tanstack/react-query';
 import { useGetMe, useLogout } from '@workspace/api-client-react';
-import { Loader2, Map, Users, AlertTriangle, Settings, LogOut, Activity, CalendarDays, Cpu, Link2, QrCode, RadioTower, Warehouse, Crown, MapPinned, UserCog, Bike, FileCheck2, PackageCheck, ChevronDown, MessageCircle, Smartphone, ArrowLeft, PanelLeftOpen, Car } from 'lucide-react';
+import { Loader2, Map, Users, AlertTriangle, Settings, LogOut, Activity, CalendarDays, Cpu, Link2, QrCode, RadioTower, Warehouse, Crown, MapPinned, UserCog, Bike, FileCheck2, PackageCheck, ChevronDown, MailSearch, MessageCircle, Smartphone, ArrowLeft, PanelLeftOpen, Car } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ToastAction } from '@/components/ui/toast';
 import { useToast } from '@/hooks/use-toast';
@@ -175,6 +175,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             </>
           )}
           <NavItem href="/attendance" icon={<CalendarDays className="w-5 h-5" />} label="Attendance" />
+          {user.role === 'SUPER_ADMIN' && <NavItem href="/email-report-sync" icon={<MailSearch className="w-5 h-5" />} label="Email Report Sync" />}
           <NavItem href="/alerts" icon={<AlertTriangle className="w-5 h-5" />} label="Mobile Alerts" />
           <button
             type="button"
@@ -222,7 +223,6 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               <NavItem href="/iot-operations" icon={<RadioTower className="w-4 h-4" />} label="IoT Operations" />
             </div>
           )}
-          {user.role === 'SUPER_ADMIN' && <NavItem href="/state-configuration" icon={<MapPinned className="w-5 h-5" />} label="State Configuration" />}
           <NavItem href="/delivery-imports" icon={<PackageCheck className="w-5 h-5" />} label="Delivery Imports" />
 
           <p className="px-3 text-[10px] font-semibold uppercase tracking-widest text-sidebar-foreground/40 mb-1 mt-3">GPS Devices</p>

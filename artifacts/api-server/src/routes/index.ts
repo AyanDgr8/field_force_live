@@ -21,6 +21,7 @@ import iotOperationsRouter from "./iotOperations";
 import organizationRouter from "./organization";
 import geoRouter from "./geo";
 import notificationsRouter from "./notifications";
+import emailReportsRouter from "./emailReports";
 
 const router: IRouter = Router();
 
@@ -46,5 +47,6 @@ router.use(iotOperationsRouter);
 router.use(organizationRouter);
 router.use(geoRouter);
 router.use(notificationsRouter);
+router.use(emailReportsRouter);
 
 export default router;

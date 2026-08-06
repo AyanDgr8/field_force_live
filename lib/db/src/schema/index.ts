@@ -9,3 +9,4 @@ export * from "./gpsDevices";
 export * from "./iotOperations";
 export * from "./organization";
 export * from "./notifications";
+export * from "./emailReports";

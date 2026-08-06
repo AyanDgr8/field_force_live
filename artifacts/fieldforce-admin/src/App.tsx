@@ -31,11 +31,11 @@ import SuperAdmins from '@/pages/super-admins';
 import StateAdmins from '@/pages/state-admins';
 import HubAdmins from '@/pages/hub-admins';
 import Bikers from '@/pages/bikers';
-import StateConfiguration from '@/pages/state-configuration';
 import VehicleConfiguration from '@/pages/vehicle-configuration';
 import BackgroundVerification from '@/pages/background-verification';
 import DeliveryImports from '@/pages/delivery-imports';
 import WhatsAppNotifications from '@/pages/whatsapp-notifications';
+import EmailReportIngestion from '@/pages/email-report-ingestion';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -78,11 +78,12 @@ function AppRoutes() {
             <Route path="/state-admins" component={StateAdmins} />
             <Route path="/hub-admins" component={HubAdmins} />
             <Route path="/bikers" component={Bikers} />
-            <Route path="/state-configuration" component={StateConfiguration} />
+            <Route path="/state-configuration" component={HubConfiguration} />
             <Route path="/vehicle-configuration" component={VehicleConfiguration} />
             <Route path="/background-verification" component={BackgroundVerification} />
             <Route path="/delivery-imports" component={DeliveryImports} />
             <Route path="/whatsapp-notifications" component={WhatsAppNotifications} />
+            <Route path="/email-report-sync" component={EmailReportIngestion} />
             <Route component={NotFound} />
           </Switch>
         </Layout>

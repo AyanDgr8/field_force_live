@@ -20,6 +20,10 @@ const packagesDefault = [
 const hubBody = z.object({
   name: z.string().min(1), code: z.string().min(1).max(64),
   city: z.string().min(1).max(128).nullable().optional(),
+  zone: z.string().min(1).max(128).nullable().optional(),
+  cluster: z.string().min(1).max(128).nullable().optional(),
+  metroType: z.string().min(1).max(32).nullable().optional(),
+  category: z.string().min(1).max(128).nullable().optional(),
   stateId: z.number().int().positive().nullable().optional(),
   address: z.string().max(500).nullable().optional(),
   latitude: z.number().min(-90).max(90), longitude: z.number().min(-180).max(180),
@@ -119,6 +123,10 @@ router.post("/iot/hubs/import", requireAuth, async (req, res): Promise<void> => 
       { label: "HubName", aliases: ["HubName", "Hub Name", "Hub"] },
       { label: "City", aliases: ["City", "City Name"] },
       { label: "State", aliases: ["State", "State Name"] },
+      { label: "Zone", aliases: ["Zone"] },
+      { label: "Cluster", aliases: ["Cluster"] },
+      { label: "Metro/Non-Metro", aliases: ["Metro/Non-Metro", "Metro Non-Metro", "Metro Type"] },
+      { label: "Category", aliases: ["Category", "Cattegory"] },
     ];
     const missingHeaders = required.filter(field => !detectedHeaders.some(header => field.aliases.map(normalizedLookup).includes(normalizedLookup(header))));
     if (missingHeaders.length) {
@@ -148,17 +156,24 @@ router.post("/iot/hubs/import", requireAuth, async (req, res): Promise<void> => 
     }
 
     const allowedStateIds = admin.role === "SUPER_ADMIN" ? null : new Set(admin.stateIds);
-    const existingHubNames = new Set(hubs.map(hub => normalizedLookup(hub.name)));
+    const existingHubByName = new Map(hubs.map(hub => [normalizedLookup(hub.name), hub]));
     const usedHubCodes = new Set(hubs.map(hub => hub.code.toUpperCase()));
     const pendingHubNames = new Set<string>();
     const inserts: Array<typeof hubsTable.$inferInsert> = [];
+    const updates: Array<{ id: number; values: Partial<typeof hubsTable.$inferInsert> }> = [];
     const warnings: string[] = [];
-    let existingRows = 0, skippedRows = 0;
+    let existingRows = 0, updatedHubs = 0, skippedRows = 0;
     for (const [index, row] of rows.entries()) {
       const rowNumber = index + 2;
       const name = sheetValue(row, ["HubName", "Hub Name", "Hub"]);
       const city = sheetValue(row, ["City", "City Name"]);
       const stateName = sheetValue(row, ["State", "State Name"]);
+      // Some rows leave the taxonomy columns empty; store null rather than ""
+      // so the hub body validator accepts the value when the hub is edited.
+      const zone = sheetValue(row, ["Zone"]) || null;
+      const cluster = sheetValue(row, ["Cluster"]) || null;
+      const metroType = sheetValue(row, ["Metro/Non-Metro", "Metro Non-Metro", "Metro Type"]) || null;
+      const category = sheetValue(row, ["Category", "Cattegory"]) || null;
       if (!name || !city || !stateName) {
         skippedRows++; warnings.push(`Row ${rowNumber}: HubName, City, and State are required`);
         continue;
@@ -169,7 +184,13 @@ router.post("/iot/hubs/import", requireAuth, async (req, res): Promise<void> => 
         continue;
       }
       const hubKey = normalizedLookup(name);
-      if (existingHubNames.has(hubKey) || pendingHubNames.has(hubKey)) { existingRows++; continue; }
+      const existingHub = existingHubByName.get(hubKey);
+      if (existingHub) {
+        existingRows++;
+        updates.push({ id: existingHub.id, values: { stateId: state.id, city, zone, cluster, metroType, category } });
+        continue;
+      }
+      if (pendingHubNames.has(hubKey)) { existingRows++; continue; }
       const baseCode = generatedCode(name, `HUB_${rowNumber}`, 58);
       let code = baseCode, suffix = 2;
       while (usedHubCodes.has(code)) code = `${baseCode.slice(0, 58)}_${suffix++}`;
@@ -181,6 +202,10 @@ router.post("/iot/hubs/import", requireAuth, async (req, res): Promise<void> => 
         name,
         code,
         city,
+        zone,
+        cluster,
+        metroType,
+        category,
         qrToken: uuidv4(),
         address: `${city}, ${stateName}`,
         latitude: 0,
@@ -193,6 +218,10 @@ router.post("/iot/hubs/import", requireAuth, async (req, res): Promise<void> => 
     for (let offset = 0; offset < inserts.length; offset += 250) {
       await db.insert(hubsTable).values(inserts.slice(offset, offset + 250));
     }
+    for (const update of updates) {
+      await db.update(hubsTable).set(update.values).where(eq(hubsTable.id, update.id));
+      updatedHubs++;
+    }
     const limitedWarnings = warnings.slice(0, 50);
     if (warnings.length > 50) limitedWarnings.push(`${warnings.length - 50} additional warnings omitted`);
     res.json({
@@ -201,6 +230,7 @@ router.post("/iot/hubs/import", requireAuth, async (req, res): Promise<void> => 
       totalRows: rows.length,
       createdStates,
       createdHubs: inserts.length,
+      updatedHubs,
       existingRows,
       skippedRows,
       warnings: limitedWarnings,
